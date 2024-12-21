@@ -1,11 +1,4 @@
-import {
-  Application,
-  Container,
-  AnimatedSprite,
-  Graphics,
-  ParticleContainer,
-  Mesh
-} from "pixi.js";
+import { Application, Container } from "pixi.js";
 
 
 const _BUFFER_PROPERTIES =
@@ -270,10 +263,7 @@ export class InterpolatedTicker
    */
   public getDefaultInterpolation( container: InterpolatedContainer ): boolean
   {
-    return !(container instanceof AnimatedSprite
-      || container instanceof Graphics
-      || container instanceof ParticleContainer
-      || container instanceof Mesh);
+    return true;
   }
 
   // ----- protected methods: -----
@@ -339,7 +329,8 @@ export class InterpolatedTicker
     {
       if ( ! this.getDefaultInterpolation(container) )
       {
-        container.interpolation = false;
+        container.interpolation = false; // skip check next time
+
         return;
       }
 
