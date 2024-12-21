@@ -12,8 +12,7 @@ declare module 'pixi.js' {
      * Set `getDefaultInterpolation( container )` on `InterpolatedTicker` to
      * modify the default behavior.
      *
-     * The default is true for all containers, excluding `PIXI.AnimatedSprite`,
-     * `PIXI.Graphics`, `PIXI.Mesh`, and `PIXI.ParticleContainer`.
+     * The default is true for all containers.
      */
     interpolation?: boolean;
 
