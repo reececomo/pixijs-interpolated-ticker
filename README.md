@@ -55,7 +55,7 @@ const ticker = new InterpolationTicker({
 })
 
 // set the target frequency of the update loop
-ticker.updateIntervalMs = 1000 / 45
+ticker.updateIntervalMs = 8.3334
 
 // modify the frequency of the update loop (relative to updateIntervalMs)
 ticker.speed = 1.5
@@ -66,13 +66,13 @@ ticker.onRender = ( deltaTimeMs ) => {
 }
 
 // limit the render frequency (default: -1)
-ticker.renderIntervalMs = 1000 / 60
+ticker.maxRenderFPS = 60
 
-// set the maximum number of times the update loop will be triggered
-// if rendering is interrupted
-ticker.maxUpdateDesync = 4;
+// limit the maximum number of times the update loop can be triggered
+// if rendering is interrupted or slow for any reason
+ticker.maxUpdatesPerRender = 4;
 
-// set the default opt-in/opt-out logic for containers
+// set the default logic for opt-in/opt-out containers
 ticker.getDefaultInterpolation = ( container ): boolean => {
   return container instanceof MyClass;
 }

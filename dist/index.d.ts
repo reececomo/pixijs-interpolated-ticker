@@ -59,8 +59,8 @@ export declare class InterpolatedTicker {
 	 * Container values will be their temporary interpolated values.
 	 */
 	onRender?: (dt: number) => void;
-	/** Limit maximum number of update() per render. */
-	maxUpdateDesync: number;
+	/** Limit maximum number of update() per render (i.e. rendering is slow). */
+	maxUpdatesPerRender: number;
 	protected _app: Application;
 	protected _targetUpdateIntervalMs: number;
 	protected _updateIntervalMs: number;
@@ -68,8 +68,8 @@ export declare class InterpolatedTicker {
 	protected _accumulator: number;
 	protected _isRunning: boolean;
 	protected _speed: number;
-	protected _targetRenderFPS: number;
-	protected _targetRenderIntervalMs: number;
+	protected _maxRenderFPS: number;
+	protected _maxRenderIntervalMs: number;
 	protected _capacity: number;
 	protected _idxContainers: Array<InterpolatedContainer | undefined>;
 	protected _idxContainersCount: number;
@@ -98,8 +98,8 @@ export declare class InterpolatedTicker {
 	get speed(): number;
 	get updateIntervalMs(): number;
 	set updateIntervalMs(value: number);
-	get targetRenderFPS(): number;
-	set targetRenderFPS(value: number);
+	get maxRenderFPS(): number;
+	set maxRenderFPS(value: number);
 	start(): void;
 	stop(): void;
 	/**

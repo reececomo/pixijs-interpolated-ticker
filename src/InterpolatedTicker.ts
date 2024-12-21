@@ -68,8 +68,8 @@ export class InterpolatedTicker
    */
   public onRender?: ( dt: number ) => void;
 
-  /** Limit maximum number of update() per render. */
-  public maxUpdateDesync = 3;
+  /** Limit maximum number of update() per render (i.e. rendering is slow). */
+  public maxUpdatesPerRender = 3;
 
   // ----- Properties: -----
 
@@ -82,8 +82,8 @@ export class InterpolatedTicker
   protected _accumulator: number = 0;
   protected _isRunning: boolean = false;
   protected _speed: number = 1.0;
-  protected _targetRenderFPS: number = -1;
-  protected _targetRenderIntervalMs: number = -1;
+  protected _maxRenderFPS: number = -1;
+  protected _maxRenderIntervalMs: number = -1;
 
   // container indices
   protected _capacity: number;
@@ -188,15 +188,15 @@ export class InterpolatedTicker
     this._updateIntervalMs = value / this._speed;
   }
 
-  public get targetRenderFPS(): number
+  public get maxRenderFPS(): number
   {
-    return this._targetRenderFPS;
+    return this._maxRenderFPS;
   }
 
-  public set targetRenderFPS( value: number )
+  public set maxRenderFPS( value: number )
   {
-    this._targetRenderFPS = value <= 0 ? -1 : value;
-    this._targetRenderIntervalMs = value <= 0 ? -1 : 1000 / value;
+    this._maxRenderFPS = value <= 0 ? -1 : value;
+    this._maxRenderIntervalMs = value <= 0 ? -1 : 1000 / value;
   }
 
   public start(): void
@@ -209,7 +209,7 @@ export class InterpolatedTicker
       const renderDelta = now - this._previousTime;
 
       // limit renders if needed
-      if ( renderDelta < this._targetRenderIntervalMs )
+      if ( renderDelta < this._maxRenderIntervalMs )
       {
         if ( this._isRunning )
         {
@@ -223,7 +223,7 @@ export class InterpolatedTicker
 
       this._accumulator = Math.min(
         this._accumulator + renderDelta,
-        this._updateIntervalMs * this.maxUpdateDesync,
+        this._updateIntervalMs * this.maxUpdatesPerRender,
       );
 
       // -------------------------------------
@@ -363,11 +363,11 @@ export class InterpolatedTicker
     }
 
     // store current reference point
-    this._prevX[index] = container.transform.position._x;
-    this._prevY[index] = container.transform.position._y;
-    this._prevScaleX[index] = container.transform.scale._x;
-    this._prevScaleY[index] = container.transform.scale._y;
-    this._prevRotation[index] = container.transform.rotation;
+    this._prevX[index] = container.position._x;
+    this._prevY[index] = container.position._y;
+    this._prevScaleX[index] = container.scale._x;
+    this._prevScaleY[index] = container.scale._y;
+    this._prevRotation[index] = container.rotation;
     this._prevAlpha[index] = container.alpha;
     this._idxContainers[this._idxContainersCount++] = container;
 
@@ -409,11 +409,11 @@ export class InterpolatedTicker
 
       // position
       let dx =
-        ( this._shadowX[index] = container.transform.position._x ) // 🔬 NOTE: assignment
+        ( this._shadowX[index] = container.position._x ) // 🔬 NOTE: assignment
         - this._prevX[index]!;
 
       let dy =
-        ( this._shadowY[index] = container.transform.position._y )  // 🔬 NOTE: assignment
+        ( this._shadowY[index] = container.position._y )  // 🔬 NOTE: assignment
         - this._prevY[index]!;
 
       if ( wrapConfig !== undefined )
@@ -425,31 +425,31 @@ export class InterpolatedTicker
         dy = ( ( dy + yrange / 2 ) % yrange + yrange ) % yrange - yrange / 2;
       }
 
-      container.transform.position.set(
+      container.position.set(
         this._prevX[index]! + factor * dx,
         this._prevY[index]! + factor * dy
       );
 
       // scale
-      container.transform.scale.set(
+      container.scale.set(
         this._prevScaleX[index]! + factor * (
-          ( this._shadowScaleX[index] = container.transform.scale._x ) // 🔬 NOTE: assignment
+          ( this._shadowScaleX[index] = container.scale._x ) // 🔬 NOTE: assignment
           - this._prevScaleX[index]!
         ),
         this._prevScaleY[index]! + factor * (
-          ( this._shadowScaleY[index] = container.transform.scale._y ) // 🔬 NOTE: assignment
+          ( this._shadowScaleY[index] = container.scale._y ) // 🔬 NOTE: assignment
           - this._prevScaleY[index]!
         )
       );
 
       // rotation (wrap-around)
       let rotationDelta =
-        ( this._shadowRotation[index] = container.transform.rotation ) // 🔬 NOTE: assignment
+        ( this._shadowRotation[index] = container.rotation ) // 🔬 NOTE: assignment
         - this._prevRotation[index]!;
 
       if ( rotationDelta > Math.PI ) rotationDelta -= 2 * Math.PI;
       else if ( rotationDelta < -Math.PI ) rotationDelta += 2 * Math.PI;
-      container.transform.rotation = this._prevRotation[index]! + factor * rotationDelta;
+      container.rotation = this._prevRotation[index]! + factor * rotationDelta;
 
       // alpha
       container.alpha = this._prevAlpha[index]! + factor * (
@@ -474,9 +474,9 @@ export class InterpolatedTicker
       const container = this._idxContainers[i]!;
       const index = container._interpIdx!;
 
-      container.transform.position.set( this._shadowX[index]!, this._shadowY[index]! ); // trigger transform update
-      container.transform.scale.set( this._shadowScaleX[index]!, this._shadowScaleY[index]! ); // trigger transform update
-      container.transform.rotation = this._shadowRotation[index]!;
+      container.position.set( this._shadowX[index]!, this._shadowY[index]! ); // trigger transform update
+      container.scale.set( this._shadowScaleX[index]!, this._shadowScaleY[index]! ); // trigger transform update
+      container.rotation = this._shadowRotation[index]!;
       container.alpha = this._shadowAlpha[index]!;
     }
   }
