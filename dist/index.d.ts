@@ -68,6 +68,7 @@ export declare class InterpolatedTicker {
 	protected _accumulator: number;
 	protected _isRunning: boolean;
 	protected _speed: number;
+	protected _targetRenderFPS: number;
 	protected _targetRenderIntervalMs: number;
 	protected _capacity: number;
 	protected _idxContainers: Array<InterpolatedContainer | undefined>;
@@ -97,8 +98,8 @@ export declare class InterpolatedTicker {
 	get speed(): number;
 	get updateIntervalMs(): number;
 	set updateIntervalMs(value: number);
-	get renderIntervalMs(): number;
-	set renderIntervalMs(value: number);
+	get targetRenderFPS(): number;
+	set targetRenderFPS(value: number);
 	start(): void;
 	stop(): void;
 	/**

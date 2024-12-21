@@ -82,6 +82,7 @@ export class InterpolatedTicker
   protected _accumulator: number = 0;
   protected _isRunning: boolean = false;
   protected _speed: number = 1.0;
+  protected _targetRenderFPS: number = -1;
   protected _targetRenderIntervalMs: number = -1;
 
   // container indices
@@ -184,17 +185,18 @@ export class InterpolatedTicker
   public set updateIntervalMs( value: number )
   {
     this._targetUpdateIntervalMs = value;
-    this._updateIntervalMs = value * this._speed;
+    this._updateIntervalMs = value / this._speed;
   }
 
-  public get renderIntervalMs(): number
+  public get targetRenderFPS(): number
   {
-    return this._targetRenderIntervalMs;
+    return this._targetRenderFPS;
   }
 
-  public set renderIntervalMs( value: number )
+  public set targetRenderFPS( value: number )
   {
-    this._targetRenderIntervalMs = value;
+    this._targetRenderFPS = value <= 0 ? -1 : value;
+    this._targetRenderIntervalMs = value <= 0 ? -1 : 1000 / value;
   }
 
   public start(): void

@@ -35,6 +35,7 @@ describe("InterpolatedTicker", () =>
 
     expect(ticker.speed).toBe(2.0);
     expect(ticker.updateIntervalMs).toBeCloseTo(16.6667); // unaffected
+    expect(ticker["_updateIntervalMs"]).toBeCloseTo(8.3334); // internal clock
   });
 
   it("should resize buffer when capacity is exceeded", () =>
