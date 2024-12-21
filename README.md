@@ -74,7 +74,7 @@ ticker.maxUpdatesPerRender = 4;
 
 // set the default logic for opt-in/opt-out containers
 ticker.getDefaultInterpolation = ( container ): boolean => {
-  return container instanceof MyClass;
+  return !(container instanceof ParticleContainer);
 }
 ```
 
@@ -84,7 +84,7 @@ Containers are extended with a few optional properties to make it easy to config
 
 | Property | Description |
 | :----- | :------ |
-| `interpolation` | Whether interpolation is explicitly enabled or disabled for this container. The default behavior for most containers is `true`, excluding `AnimatedSprite`, `Graphics`, `Mesh`, and `ParticleContainer`. |
+| `interpolation` | Whether interpolation is explicitly enabled or disabled for this container. The default behavior for all containers is `true`. |
 | `interpolatedChildren` | An array of child containers to include in interpolation. When not set, `children` is used. |
 | `interpolationWraparound` | If set, position will smoothly wraparound the given ranges. |
 
