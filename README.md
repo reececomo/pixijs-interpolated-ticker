@@ -7,7 +7,7 @@
 | 🔮 Simple, drop-in API | 💪 Powerful configuration, sensible defaults |
 | ✅ Compatible with animation plugins | 🚀 Decouple your update and render loops|
 | 🍃 No dependencies & tree-shakeable | 🎥 Interpolates `position`, `scale`, `rotation`, and `alpha` |
-| 🤏 Tiny footprint | ✨ Supports PixiJS |
+| 🤏 ~1.6kB | ✨ Supports PixiJS |
 
 ## Sample Usage
 
