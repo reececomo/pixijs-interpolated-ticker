@@ -54,18 +54,53 @@ export declare class InterpolatedTicker {
 	 */
 	update?: (ft: number) => void;
 	/**
-	 * Triggered on each render frame during frame interpolation.
-	 * Container values will be their temporary interpolated values.
+	 * Triggered at the start of each cycle, prior to
+	 * any update or render frames being processed.
+	 */
+	evalStart?: (start: number) => void;
+	/**
+	 * Triggered at the end of each cycle, after any
+	 * update or render frames have been processed.
+	 */
+	evalEnd?: (start: number) => void;
+	/**
+	 * Triggered before a render frame.
+	 *
+	 * Container values are their true values.
+	 */
+	beforeRender?: (dt: number) => void;
+	/**
+	 * Triggered during a render frame (prior to writing
+	 * the framebuffer).
+	 *
+	 * Container values are their interpolated values.
 	 */
 	onRender?: (dt: number) => void;
+	/**
+	 * Triggered after a render frame (after writing the
+	 * framebuffer).
+	 *
+	 * Container values are their true values.
+	 */
+	afterRender?: (dt: number) => void;
 	/** Limit maximum number of update() per render (i.e. rendering is slow). */
 	maxUpdatesPerRender: number;
+	/** Whether interpolation is currently enabled. */
+	interpolation: boolean;
+	/** The maximum change in position values to interpolate (default: 100). */
+	autoLimitPosition: number;
+	/** The maximum change in scale values to interpolate (default: 1). */
+	autoLimitScale: number;
+	/** The maximum change in rotation values to interpolate (default: 45°). */
+	autoLimitRotation: number;
+	/** The maximum change in alpha values to interpolate (default: 0.5). */
+	autoLimitAlpha: number;
 	protected _app: Application;
 	protected _targetUpdateIntervalMs: number;
 	protected _updateIntervalMs: number;
 	protected _previousTime: number;
 	protected _accumulator: number;
-	protected _isRunning: boolean;
+	protected _started: boolean;
 	protected _speed: number;
 	protected _maxRenderFPS: number;
 	protected _maxRenderIntervalMs: number;
@@ -88,10 +123,21 @@ export declare class InterpolatedTicker {
 	protected _shadowScaleY: Float32Array;
 	protected _shadowAlpha: Float32Array;
 	protected _buffer: ArrayBuffer;
-	constructor({ app, updateIntervalMs, initialCapacity, }: {
+	constructor({ app, update, evalStart, evalEnd, beforeRender, onRender, afterRender, autoLimitAlpha, autoLimitPosition, autoLimitRotation, autoLimitScale, interpolation, updateIntervalMs, initialCapacity, }: {
 		app: Application;
+		interpolation?: boolean;
 		updateIntervalMs?: number;
 		initialCapacity?: number;
+		update?: (ft: number) => void;
+		evalStart?: (start: number) => void;
+		evalEnd?: (start: number) => void;
+		beforeRender?: (dt: number) => void;
+		onRender?: (dt: number) => void;
+		afterRender?: (dt: number) => void;
+		autoLimitAlpha?: number;
+		autoLimitPosition?: number;
+		autoLimitRotation?: number;
+		autoLimitScale?: number;
 	});
 	set speed(value: number);
 	get speed(): number;
@@ -99,6 +145,7 @@ export declare class InterpolatedTicker {
 	set updateIntervalMs(value: number);
 	get maxRenderFPS(): number;
 	set maxRenderFPS(value: number);
+	get started(): boolean;
 	start(): void;
 	stop(): void;
 	/**

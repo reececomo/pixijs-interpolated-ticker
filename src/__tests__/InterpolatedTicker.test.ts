@@ -20,7 +20,13 @@ describe("InterpolatedTicker", () =>
   beforeEach(() =>
   {
     app = mockApp();
-    ticker = new InterpolatedTicker({ app });
+    ticker = new InterpolatedTicker({
+      app,
+      autoLimitPosition: 1000,
+      autoLimitScale: 10,
+      autoLimitAlpha: 100,
+      autoLimitRotation: Math.PI * 2,
+    });
   });
 
   it("should initialize with default properties", () =>

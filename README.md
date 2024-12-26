@@ -30,7 +30,7 @@
 <td>💪 Configurable, with sensible defaults</td>
 </tr>
 <tr>
-<td>🤏 &lt;2Kb minzipped</td>
+<td>🤏 Tiny (&lt;2kB)</td>
 <td>🍃 No dependencies, tree-shakeable</td>
 </tr>
 </tbody>
@@ -42,14 +42,14 @@
 
 ```ts
 // define an update loop (default: 60Hz)
-const myLoop = new InterpolatedTicker({ app })
+const mainLoop = new InterpolatedTicker({ app })
 
-myLoop.update = () => {
+mainLoop.update = () => {
   // changes made here will be rendered at the
   // current refresh rate is (e.g. 30Hz, 144Hz)
 }
 
-myLoop.start()
+mainLoop.start()
 ```
 
 ## Getting Started
@@ -82,7 +82,7 @@ During an **update** frame, the InterpolatedTicker hydrates its internal buffer 
 *Configuring your interpolation ticker.*
 
 ```ts
-const ticker = new InterpolationTicker({
+const mainLoop = new InterpolationTicker({
   app: myApplication,
 
   // how often to trigger update loop (default: 1000/60)
@@ -93,27 +93,61 @@ const ticker = new InterpolationTicker({
 })
 
 // set the target frequency of the update loop
-ticker.updateIntervalMs = 8.3334
+mainLoop.updateIntervalMs = 1000 / 30;
 
 // modify the frequency of the update loop (relative to updateIntervalMs)
-ticker.speed = 1.5
+mainLoop.speed = 1.5
 
-// listen to render frames
-ticker.onRender = ( deltaTimeMs ) => {
-  // called during rendering
-}
+// limit the render frequency, -1 is unlimited (default: -1)
+mainLoop.maxRenderFPS = 60
 
-// limit the render frequency (default: -1)
-ticker.maxRenderFPS = 60
+// limit render skips - if rendering is interrupted for any
+// reason - e.g. the window loses focus - then this will
+// limit the maximum number of "catch-up" frames.
+mainLoop.maxUpdatesPerRender = 10;
 
-// limit render skips - if rendering is interuppted for any
-// reason (e.g. window loses focus) then settings this will
-// limit the number of "catch-up" frames.
-ticker.maxUpdatesPerRender = 10;
+// enable/disable interpolation overall
+mainLoop.interpolation = false;
+
+// set upper limits for interpolation.
+// any changes between update frames larger than these are discarded
+// and values are snapped.
+mainLoop.autoLimitAlpha = 0.1; // default: 0.5
+mainLoop.autoLimitPosition = 250; // default: 100
+mainLoop.autoLimitRotation = Math.PI; // default: Math.PI / 4 (45°)
+mainLoop.autoLimitScale = 2; // default: 1.0
 
 // set the default logic for opt-in/opt-out containers
-ticker.getDefaultInterpolation = ( container ): boolean => {
+mainLoop.getDefaultInterpolation = ( container ): boolean => {
   return !(container instanceof ParticleContainer);
+}
+
+//
+// lifecycle hooks:
+//
+
+mainLoop.preRender = ( deltaTimeMs ) => {
+  // triggered at the start of a render frame, immediately
+  // after any update frames have been processed.
+  // container values are their true values.
+}
+mainLoop.onRender = ( deltaTimeMs ) => {
+  // triggered during a render frame, prior to writing the framebuffer.
+  // container values are their interpolated values.
+  // changes to values made here will affect the current render.
+}
+mainLoop.postRender = ( deltaTimeMs ) => {
+  // triggered at the end of a render frame.
+  // container values are their true values.
+}
+
+mainLoop.evalStart = ( startTime ) => {
+  // triggered at the start of each evaluation cycle, prior to
+  // any update or render frames being processed.
+}
+mainLoop.evalEnd = ( startTime ) => {
+  // triggered at the end of each evaluation cycle, after all
+  // update and render frames have been processed.
 }
 ```
 

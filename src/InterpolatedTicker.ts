@@ -49,6 +49,8 @@ export type InterpolatedContainer = Container & {
  */
 export class InterpolatedTicker
 {
+  // ----- Event hooks: -----
+
   /**
    * The update loop to trigger on each fixed timestep.
    * Container values set here are interpolated on render frames.
@@ -56,15 +58,61 @@ export class InterpolatedTicker
   public update?: ( ft: number ) => void;
 
   /**
-   * Triggered on each render frame during frame interpolation.
-   * Container values will be their temporary interpolated values.
+   * Triggered at the start of each cycle, prior to
+   * any update or render frames being processed.
+   */
+  public evalStart?: ( start: number ) => void;
+
+  /**
+   * Triggered at the end of each cycle, after any
+   * update or render frames have been processed.
+   */
+  public evalEnd?: ( start: number ) => void;
+
+  /**
+   * Triggered before a render frame.
+   *
+   * Container values are their true values.
+   */
+  public beforeRender?: ( dt: number ) => void;
+
+  /**
+   * Triggered during a render frame (prior to writing
+   * the framebuffer).
+   *
+   * Container values are their interpolated values.
    */
   public onRender?: ( dt: number ) => void;
 
-  /** Limit maximum number of update() per render (i.e. rendering is slow). */
-  public maxUpdatesPerRender = 3;
+  /**
+   * Triggered after a render frame (after writing the
+   * framebuffer).
+   *
+   * Container values are their true values.
+   */
+  public afterRender?: ( dt: number ) => void;
 
   // ----- Properties: -----
+
+  /** Limit maximum number of update() per render (i.e. rendering is slow). */
+  public maxUpdatesPerRender = 10;
+
+  /** Whether interpolation is currently enabled. */
+  public interpolation = true;
+
+  /** The maximum change in position values to interpolate (default: 100). */
+  public autoLimitPosition = 100;
+
+  /** The maximum change in scale values to interpolate (default: 1). */
+  public autoLimitScale = 1;
+
+  /** The maximum change in rotation values to interpolate (default: 45°). */
+  public autoLimitRotation = Math.PI / 4;
+
+  /** The maximum change in alpha values to interpolate (default: 0.5). */
+  public autoLimitAlpha = 0.5;
+
+  // ----- Internal: -----
 
   protected _app: Application;
 
@@ -73,7 +121,7 @@ export class InterpolatedTicker
   protected _updateIntervalMs: number;
   protected _previousTime: number = 0;
   protected _accumulator: number = 0;
-  protected _isRunning: boolean = false;
+  protected _started: boolean = false;
   protected _speed: number = 1.0;
   protected _maxRenderFPS: number = -1;
   protected _maxRenderIntervalMs: number = -1;
@@ -116,19 +164,55 @@ export class InterpolatedTicker
   public constructor(
     {
       app,
+      update,
+      evalStart,
+      evalEnd,
+      beforeRender,
+      onRender,
+      afterRender,
+      autoLimitAlpha,
+      autoLimitPosition,
+      autoLimitRotation,
+      autoLimitScale,
+      interpolation = true,
       updateIntervalMs = 1_000 / 60,
       initialCapacity = 500,
     }: {
       app: Application;
+      // optional config:
+      interpolation?: boolean;
       updateIntervalMs?: number;
       initialCapacity?: number;
+      update?: ( ft: number ) => void;
+      evalStart?: ( start: number ) => void;
+      evalEnd?: ( start: number ) => void;
+      beforeRender?: ( dt: number ) => void;
+      onRender?: ( dt: number ) => void;
+      afterRender?: ( dt: number ) => void;
+      autoLimitAlpha?: number;
+      autoLimitPosition?: number;
+      autoLimitRotation?: number;
+      autoLimitScale?: number;
     }
   )
   {
     this._app = app;
 
+    this.update = update;
+    this.evalStart = evalStart;
+    this.evalEnd = evalEnd;
+    this.onRender = onRender;
+    this.beforeRender = beforeRender;
+    this.afterRender = afterRender;
+
     this._targetUpdateIntervalMs = updateIntervalMs;
     this._updateIntervalMs = updateIntervalMs;
+
+    this.interpolation = interpolation;
+    this.autoLimitAlpha = autoLimitAlpha;
+    this.autoLimitPosition = autoLimitPosition;
+    this.autoLimitRotation = autoLimitRotation;
+    this.autoLimitScale = autoLimitScale;
 
     const capacity = initialCapacity;
     this._capacity = capacity;
@@ -192,19 +276,24 @@ export class InterpolatedTicker
     this._maxRenderIntervalMs = value <= 0 ? -1 : 1000 / value;
   }
 
+  public get started(): boolean
+  {
+    return this._started;
+  }
+
   public start(): void
   {
-    if ( this._isRunning ) return;
+    if ( this._started ) return;
 
     const loop = (): void =>
     {
-      const now = performance.now();
-      const renderDelta = now - this._previousTime;
+      const start = performance.now();
+      const renderDelta = start - this._previousTime;
 
       // limit renders if needed
       if ( renderDelta < this._maxRenderIntervalMs )
       {
-        if ( this._isRunning )
+        if ( this._started )
         {
           requestAnimationFrame( loop );
         }
@@ -212,7 +301,9 @@ export class InterpolatedTicker
         return;
       }
 
-      this._previousTime = now;
+      this.evalStart?.( start );
+
+      this._previousTime = start;
 
       this._accumulator = Math.min(
         this._accumulator + renderDelta,
@@ -236,26 +327,31 @@ export class InterpolatedTicker
       // -------------------------------------
       //
 
+      this.beforeRender?.( renderDelta );
       this._interpolateContainers( this._accumulator );
       this.onRender?.( renderDelta );
       this._app.renderer.render( this._app.stage );
       this._restoreContainers();
+      this.afterRender?.( renderDelta );
 
-      if ( this._isRunning )
+      // end the loop
+      this.evalEnd?.( start );
+
+      if ( this._started )
       {
         requestAnimationFrame( loop );
       }
     };
 
     // kick off
-    this._isRunning = true;
+    this._started = true;
     this._previousTime = performance.now();
     requestAnimationFrame( loop );
   }
 
   public stop(): void
   {
-    this._isRunning = false;
+    this._started = false;
   }
 
   /**
@@ -372,6 +468,8 @@ export class InterpolatedTicker
 
   protected _interpolateContainers( accumulated: number ): void
   {
+    if ( !this.interpolation ) return;
+
     const rawFactor = accumulated / this._updateIntervalMs;
     const factor = rawFactor > 1 ? 1 : rawFactor < 0 ? 0 : rawFactor;
 
@@ -416,22 +514,37 @@ export class InterpolatedTicker
         dy = ( ( dy + yrange / 2 ) % yrange + yrange ) % yrange - yrange / 2;
       }
 
-      container.position.set(
-        this._prevX[index]! + factor * dx,
-        this._prevY[index]! + factor * dy
-      );
+      if (
+        Math.abs( dx ) <= this.autoLimitPosition
+        && Math.abs( dy ) <= this.autoLimitPosition
+      )
+      {
+        container.position.set(
+          this._prevX[index]! + factor * dx,
+          this._prevY[index]! + factor * dy
+        );
+      }
 
       // scale
-      container.scale.set(
-        this._prevScaleX[index]! + factor * (
-          ( this._shadowScaleX[index] = container.scale._x ) // 🔬 NOTE: assignment
-          - this._prevScaleX[index]!
-        ),
-        this._prevScaleY[index]! + factor * (
-          ( this._shadowScaleY[index] = container.scale._y ) // 🔬 NOTE: assignment
-          - this._prevScaleY[index]!
-        )
+      const scaleDx = (
+        ( this._shadowScaleX[index] = container.scale._x ) // 🔬 NOTE: assignment
+        - this._prevScaleX[index]!
       );
+      const scaleDy = (
+        ( this._shadowScaleY[index] = container.scale._y ) // 🔬 NOTE: assignment
+        - this._prevScaleY[index]!
+      );
+
+      if (
+        Math.abs( scaleDx ) <= this.autoLimitScale
+        && Math.abs( scaleDy ) <= this.autoLimitScale
+      )
+      {
+        container.scale.set(
+          this._prevScaleX[index]! + factor * scaleDx,
+          this._prevScaleY[index]! + factor * scaleDy
+        );
+      }
 
       // rotation (wrap-around)
       let rotationDelta =
@@ -440,18 +553,29 @@ export class InterpolatedTicker
 
       if ( rotationDelta > Math.PI ) rotationDelta -= 2 * Math.PI;
       else if ( rotationDelta < -Math.PI ) rotationDelta += 2 * Math.PI;
-      container.rotation = this._prevRotation[index]! + factor * rotationDelta;
+
+      if ( Math.abs( rotationDelta ) <= this.autoLimitRotation )
+      {
+        container.rotation = this._prevRotation[index]! + factor * rotationDelta;
+      }
 
       // alpha
-      container.alpha = this._prevAlpha[index]! + factor * (
+      const alphaDelta = (
         ( this._shadowAlpha[index] = container.alpha ) // 🔬 NOTE: assignment
-            - this._prevAlpha[index]!
+        - this._prevAlpha[index]!
       );
+
+      if ( Math.abs( alphaDelta ) <= this.autoLimitAlpha )
+      {
+        container.alpha = this._prevAlpha[index]! + factor * alphaDelta;
+      }
     }
   }
 
   protected _restoreContainers(): void
   {
+    if ( !this.interpolation ) return;
+
     for ( let i = 0; i < this._idxContainersCount; i++ )
     {
       if ( this._idxContainers[i] === undefined ) continue;
