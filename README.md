@@ -3,11 +3,16 @@
   🎥 PixiJS Interpolated Ticker
   <br>
   <img src="./hero.png" width=50% />
+<br>
+<br>
 </h1>
+<br>
+<br>
 
 <p align="center">
-  ⚡️ Unlimited render FPS, fixed-interval updates &ndash; seamless, high-performance frame interpolator plugin for PixiJS
+  ⚡️ Fixed update loop, unlimited render FPS &ndash; seamless, high-performance frame interpolator for PixiJS
 </p>
+<br>
 
 <br>
 
