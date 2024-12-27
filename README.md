@@ -1,19 +1,17 @@
 <br>
 <h1 align="center">
-  🎥 PixiJS Interpolated Ticker
+  PixiJS Interpolated Ticker
+  <br>
   <br>
   <img src="./hero.png" width=50% />
 <br>
 <br>
 </h1>
 <br>
-<br>
 
 <p align="center">
-  ⚡️ Fixed update loop, unlimited render FPS &ndash; seamless, high-performance frame interpolator for PixiJS
+  ⚡ Unlimited render FPS &ndash; high-performance keyframe interpolation for PixiJS
 </p>
-<br>
-
 <br>
 
 <p>
@@ -43,44 +41,33 @@
 
 ## Sample Usage
 
-*Create and configure an update loop.*
-
 ```ts
-// define an update loop (default: 60Hz)
-const mainLoop = new InterpolatedTicker({ app })
-
-mainLoop.update = () => {
-  // changes made here will be rendered at the
-  // current refresh rate is (e.g. 30Hz, 144Hz)
+function update() {
+  spriteA.x += 10
+  spriteB.rotation -= Math.PI * 0.125
 }
 
-mainLoop.start()
+const loop = new InterpolatedTicker({ app, update })
+
+// run @ 24Hz:
+loop.updateIntervalMs = 1000 / 24
+loop.start()
 ```
 
 ## Getting Started
 
-### 💿 Installation
+### 💿 Install
 
 ```sh
-# npm
-npm install pixijs-interpolated-ticker -D
-
-# yarn
-yarn add pixijs-interpolated-ticker --dev
+npm i pixijs-interpolated-ticker
 ```
 
-### Concepts
+### Overview
 
-InterpolatedTicker separates the update loop into a fixed-interval **update** frame, and a variable-interval **render** frame.
+- The **update()** function records **keyframes**
+- The ticker renders frames to the framebuffer using interpolated values for `x`, `y`, `scale`, `rotation`, and `alpha`
 
-The **update** and **render** loops are independent, and can run at different speeds - i.e. a 30Hz update loop could be rendered at 144 FPS, just as a 128Hz update loop could be rendered at 30 FPS.
-
-During an **update** frame, the InterpolatedTicker hydrates its internal buffer with the true `x`, `y`, `scale`, `rotation`, and `alpha` for stage containers. Then during each **render** frame, those stage containers are rendered to the framebuffer with interpolated values.
-
-> [!IMPORTANT]
-> **Interpolation:** The rendered values are always slightly _behind_ the true current value, by up to one frame.
-
-## Configuration
+## Advanced Configuration
 
 ### Ticker Options
 
@@ -90,80 +77,93 @@ During an **update** frame, the InterpolatedTicker hydrates its internal buffer 
 const mainLoop = new InterpolationTicker({
   app: myApplication,
 
-  // how often to trigger update loop (default: 1000/60)
-  updateIntervalMs: 1000 / 30,
+  // the update loop function, used as keyframes
+  update: () => {},
 
-  // initial # of containers to pre-allocate memory for (default: 500)
-  initialCapacity: 10000, 
-})
+  // enable/disable frame interpolation (default = true)
+  interpolation: true,
 
-// set the target frequency of the update loop
-mainLoop.updateIntervalMs = 1000 / 30;
+  // how frequently to trigger update loop (default = 1000/60)
+  updateIntervalMs: 1000/30,
 
-// modify the frequency of the update loop (relative to updateIntervalMs)
-mainLoop.speed = 1.5
+  // set a maximum render FPS, -1 is unlimited (default = -1)
+  maxRenderFPS: 60,
 
-// limit the render frequency, -1 is unlimited (default: -1)
-mainLoop.maxRenderFPS = 60
+  // maximum change in alpha to animate (default = 0.5):
+  autoLimitAlpha: 0.1,
 
-// limit render skips - if rendering is interrupted for any
-// reason - e.g. the window loses focus - then this will
-// limit the maximum number of "catch-up" frames.
-mainLoop.maxUpdatesPerRender = 10;
+  // maximum change in x or y to animate (default = 100):
+  autoLimitPosition: 250,
 
-// enable/disable interpolation overall
-mainLoop.interpolation = false;
+  // maximum change in rotation to animate (default = Math.PI / 4):
+  autoLimitRotation: Math.PI,
 
-// set upper limits for interpolation.
-// any changes between update frames larger than these are discarded
-// and values are snapped.
-mainLoop.autoLimitAlpha = 0.1; // default: 0.5
-mainLoop.autoLimitPosition = 250; // default: 100
-mainLoop.autoLimitRotation = Math.PI; // default: Math.PI / 4 (45°)
-mainLoop.autoLimitScale = 2; // default: 1.0
+  // maximum change in scale to animate (default = 1.0):
+  autoLimitScale: 1.5,
 
-// set the default logic for opt-in/opt-out containers
-mainLoop.getDefaultInterpolation = ( container ): boolean => {
-  return !(container instanceof ParticleContainer);
-}
+  // hook triggered at the start of a render, immediately
+  // following any update frames that have been processed.
+  // containers' values are their latest keyframe values.
+  preRender: ( deltaTimeMs ) => {},
 
-//
-// lifecycle hooks:
-//
+  // hook triggered during a render, immediately before
+  // writing to the framebuffer. containers' values are
+  // their interpolated values.
+  onRender: ( deltaTimeMs ) => {},
 
-mainLoop.preRender = ( deltaTimeMs ) => {
-  // triggered at the start of a render frame, immediately
-  // after any update frames have been processed.
-  // container values are their true values.
-}
-mainLoop.onRender = ( deltaTimeMs ) => {
-  // triggered during a render frame, prior to writing the framebuffer.
-  // container values are their interpolated values.
-  // changes to values made here will affect the current render.
-}
-mainLoop.postRender = ( deltaTimeMs ) => {
-  // triggered at the end of a render frame.
-  // container values are their true values.
-}
+  // hook triggered at the end of a render. containers'
+  // values are their latest keyframe values.
+  postRender: ( deltaTimeMs ) => {},
 
-mainLoop.evalStart = ( startTime ) => {
-  // triggered at the start of each evaluation cycle, prior to
-  // any update or render frames being processed.
-}
-mainLoop.evalEnd = ( startTime ) => {
-  // triggered at the end of each evaluation cycle, after all
+  // hook triggered at the start of each evaluation cycle, before
+  // any update or render frames are processed.
+  evalStart: ( startTime ) => {},
+
+  // hook triggered at the end of each evaluation cycle, after all
   // update and render frames have been processed.
+  evalEnd = ( startTime ) => {},
+
+  // initial number of containers to reserve memory in the internal
+  // buffer for. note: the internal buffer will resize automatically
+  // when it is full. (default = 500):
+  initialCapacity: 2500,
+})
+```
+
+and other additional non-constructor values:
+
+```ts
+const mainLoop = new InterpolatedTicker({ app })
+
+// run the update loop at 125% speed:
+mainLoop.speed = 1.25
+
+// restrict render skips - if rendering is interrupted for any
+// reason - e.g. the window loses focus - then this will
+// limit the maximum number of "catch-up" frames (default = 10):
+mainLoop.maxUpdatesPerRender = 10
+
+// set custom opt-in or opt-out logic for container interpolation.
+// when `container.interpolation` is not set yet, this function is
+// evaluated once to hydrate that property.
+//
+// you could set this to () => false to opt-out by default, and then
+// manually set container.interpolation = true in the containers you
+// want to interpolate.
+//
+// (default: () => true)
+mainLoop.getDefaultInterpolation = ( container ): boolean => {
+  return !(container instanceof Mesh)
 }
 ```
 
-> [!TIP]
-> The internal buffer automatically resizes as-needed, and is pretty fast even for large scenes. You may optionally set the  `initialCapacity` manually too.
-
 ### Container Options
 
-Containers are extended with a few optional properties to make it easy to configure interpolation.
+*Configuring individual containers.*
 
-Interpolation is opt-out for stage items, and disabling interpolation for a container will also disable it for all descendants.
+Containers are granted _optional_ properties to make it easy to configure advanced interpolation.
+
+Interpolation is opt-out for stage containers, and disabling interpolation for a container will also disable it for all descendants.
 
 | Property | Description |
 | :----- | :------ |
@@ -175,7 +175,7 @@ Interpolation is opt-out for stage items, and disabling interpolation for a cont
 // disable interpolation for a container
 // (and all of its descendants):
 const sprite = new Sprite()
-sprite.interpolation = false;
+sprite.interpolation = false
 
 // allow a container's position to wraparound smoothly:
 const background = new Sprite()
@@ -189,7 +189,7 @@ const parent = new Container()
 const childA = new Container()
 const childB = new Container()
 parent.addChild( childA, childB )
-parent.interpolatedChildren = [ childB ];
+parent.interpolatedChildren = [ childB ]
 ```
 
 ## Credits
