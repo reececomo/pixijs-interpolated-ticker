@@ -1,16 +1,14 @@
-<br>
 <h1 align="center">
-  PixiJS Interpolated Ticker
+  ⚡ pixijs-interpolated-ticker
   <br>
   <br>
   <img src="./hero.png" width=50% />
-<br>
 <br>
 </h1>
 <br>
 
 <p align="center">
-  ⚡ Unlimited render FPS &ndash; high-performance keyframe interpolation for PixiJS
+  🏃 Unlocked render FPS &ndash; decouple rendering from your update loop in PixiJS
 </p>
 <br>
 
@@ -19,7 +17,7 @@
   <a href="https://github.com/reececomo/pixijs-interpolated-ticker/blob/main/LICENSE"><img src="https://badgen.net/npm/license/pixijs-interpolated-ticker" alt="License"></a>
   <a href="https://bundlephobia.com/package/pixijs-interpolated-ticker"><img src="https://badgen.net/bundlephobia/minzip/pixijs-interpolated-ticker@latest" alt="Minzipped"></a>
   <a href="https://github.com/reececomo/pixijs-interpolated-ticker/actions/workflows/tests.yml"><img src="https://github.com/reececomo/pixijs-interpolated-ticker/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
-  <a href="https://www.npmjs.com/package/pixijs-interpolated-ticker"><img src="https://img.shields.io/npm/dm/pixijs-interpolated-ticker.svg" alt="Downloads per month"></a>
+  <a href="https://www.npmjs.com/package/pixijs-interpolated-ticker"><img src="https://img.shields.io/npm/dm/pixijs-interpolated-ticker.svg" alt="Downloads"></a>
 </p>
 
 <table>
