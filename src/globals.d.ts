@@ -1,43 +1,21 @@
-/*
- * PixiJs Mixin:
- */
-declare module 'pixi.js' {
-
-  export interface Container {
+declare module "pixi.js"
+{
+  export interface Container
+  {
+    /**
+     * Whether interpolation is enabled on this container.
+     *
+     * @default true
+     */
+    isInterpolated?: boolean;
 
     /**
-     * (Optional) Whether interpolation is enabled for a container (and
-     * its descendants).
+     * Whether interpolation is enabled on this container's children.
      *
-     * Set `getDefaultInterpolation( container )` on `InterpolatedTicker` to
-     * modify the default behavior.
-     *
-     * The default is true for all containers.
+     * @default true
      */
-    interpolation?: boolean;
-
-    /**
-     * (Optional) An array of child containers to include in interpolation.
-     * When not set, all `children` are used.
-     *
-     * Default: `undefined`
-     */
-    interpolatedChildren?: Container[];
-
-    /**
-     * (Optional) Set positional wraparound for a container.
-     *
-     * Default: `undefined`
-     */
-    interpolationWraparound?: {
-      /** Range to wraparound. @example 200 would be -100 to 100. */
-      xRange: number;
-      /** Range to wraparound. @example 200 would be -100 to 100. */
-      yRange: number;
-    };
-
+    hasInterpolatedChildren?: boolean;
   }
-
 }
 
 export {};

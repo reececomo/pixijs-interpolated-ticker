@@ -1,197 +1,250 @@
-/*
- * PixiJs Mixin:
- */
-declare module 'pixi.js' {
-
-  export interface Container {
+declare module "pixi.js"
+{
+  export interface Container
+  {
+    /**
+     * Whether interpolation is enabled on this container.
+     *
+     * @default true
+     */
+    isInterpolated?: boolean;
 
     /**
-     * (Optional) Whether interpolation is enabled for a container (and
-     * its descendants).
+     * Whether interpolation is enabled on this container's children.
      *
-     * Set `getDefaultInterpolation( container )` on `InterpolatedTicker` to
-     * modify the default behavior.
-     *
-     * The default is true for all containers.
+     * @default true
      */
-    interpolation?: boolean;
-
-    /**
-     * (Optional) An array of child containers to include in interpolation.
-     * When not set, all `children` are used.
-     *
-     * Default: `undefined`
-     */
-    interpolatedChildren?: Container[];
-
-    /**
-     * (Optional) Set positional wraparound for a container.
-     *
-     * Default: `undefined`
-     */
-    interpolationWraparound?: {
-      /** Range to wraparound. @example 200 would be -100 to 100. */
-      xRange: number;
-      /** Range to wraparound. @example 200 would be -100 to 100. */
-      yRange: number;
-    };
-
+    hasInterpolatedChildren?: boolean;
   }
-
 }
 
 export {};
-import { Application, Container } from 'pixi.js';
+import { Container } from 'pixi.js';
 
-/**
- * A fixed timestep ticker class that runs an update loop and interpolates the
- * position, scale, rotation and alpha of containers.
- */
-export declare class InterpolatedTicker {
-	/**
-	 * The update loop to trigger on each fixed timestep.
-	 * Container values set here are interpolated on render frames.
-	 */
-	update?: (ft: number) => void;
-	/**
-	 * Triggered at the start of each cycle, prior to
-	 * any update or render frames being processed.
-	 */
-	evalStart?: (start: number) => void;
-	/**
-	 * Triggered at the end of each cycle, after any
-	 * update or render frames have been processed.
-	 */
-	evalEnd?: (start: number) => void;
-	/**
-	 * Triggered before a render frame.
-	 *
-	 * Container values are their true values.
-	 */
-	beforeRender?: (dt: number) => void;
-	/**
-	 * Triggered during a render frame (prior to writing
-	 * the framebuffer).
-	 *
-	 * Container values are their interpolated values.
-	 */
-	onRender?: (dt: number) => void;
-	/**
-	 * Triggered after a render frame (after writing the
-	 * framebuffer).
-	 *
-	 * Container values are their true values.
-	 */
-	afterRender?: (dt: number) => void;
-	/** Limit maximum number of update() per render (i.e. rendering is slow). */
-	maxUpdatesPerRender: number;
-	/** Whether interpolation is currently enabled. */
-	interpolation: boolean;
-	/** The maximum change in position values to interpolate (default: 100). */
-	autoLimitPosition: number;
-	/** The maximum change in scale values to interpolate (default: 1). */
-	autoLimitScale: number;
-	/** The maximum change in rotation values to interpolate (default: 45°). */
-	autoLimitRotation: number;
-	/** The maximum change in alpha values to interpolate (default: 0.5). */
-	autoLimitAlpha: number;
-	protected _app: Application;
-	protected _targetUpdateIntervalMs: number;
-	protected _updateIntervalMs: number;
-	protected _previousTime: number;
-	protected _accumulator: number;
-	protected _started: boolean;
-	protected _speed: number;
-	protected _maxRenderFPS: number;
-	protected _maxRenderIntervalMs: number;
-	protected _capacity: number;
-	protected _idxContainers: Array<InterpolatedContainer | undefined>;
-	protected _idxContainersCount: number;
-	protected _prevIdxContainersCount: number;
-	protected _maxIdx: number;
-	protected _releasedIdx: number[];
-	protected _prevX: Float32Array;
-	protected _prevY: Float32Array;
-	protected _prevRotation: Float32Array;
-	protected _prevScaleX: Float32Array;
-	protected _prevScaleY: Float32Array;
-	protected _prevAlpha: Float32Array;
-	protected _shadowX: Float32Array;
-	protected _shadowY: Float32Array;
-	protected _shadowRotation: Float32Array;
-	protected _shadowScaleX: Float32Array;
-	protected _shadowScaleY: Float32Array;
-	protected _shadowAlpha: Float32Array;
-	protected _buffer: ArrayBuffer;
-	constructor({ app, update, evalStart, evalEnd, beforeRender, onRender, afterRender, autoLimitAlpha, autoLimitPosition, autoLimitRotation, autoLimitScale, interpolation, updateIntervalMs, initialCapacity, }: {
-		app: Application;
-		interpolation?: boolean;
-		updateIntervalMs?: number;
-		initialCapacity?: number;
-		update?: (ft: number) => void;
-		evalStart?: (start: number) => void;
-		evalEnd?: (start: number) => void;
-		beforeRender?: (dt: number) => void;
-		onRender?: (dt: number) => void;
-		afterRender?: (dt: number) => void;
-		autoLimitAlpha?: number;
-		autoLimitPosition?: number;
-		autoLimitRotation?: number;
-		autoLimitScale?: number;
-	});
-	set speed(value: number);
-	get speed(): number;
-	get updateIntervalMs(): number;
-	set updateIntervalMs(value: number);
-	get maxRenderFPS(): number;
-	set maxRenderFPS(value: number);
-	get started(): boolean;
-	start(): void;
-	stop(): void;
-	/**
-	 * Override this to opt-in containers from interpolation.
-	 */
-	getDefaultInterpolation(container: InterpolatedContainer): boolean;
-	protected _resizeBuffer(newCapacity: number): void;
-	protected _captureContainers(): void;
-	protected _captureContainersTraverseSubtree(container: InterpolatedContainer): void;
-	protected _interpolateContainers(accumulated: number): void;
-	protected _restoreContainers(): void;
-	protected _markReleased(container: InterpolatedContainer | undefined): void;
+declare class Emits<M extends Record<string, any[]>> {
+	protected _listeners: {
+		[K in keyof M]?: Listener<M, K>[];
+	};
+	on<K extends keyof M>(key: K, fn: Listener<M, K>): this;
+	off<K extends keyof M>(key: K, fn: Listener<M, K>): this;
+	emit<K extends keyof M>(key: K, ...args: M[K]): void;
 }
-export type InterpolatedContainer = Container & {
+export declare class ContainerInterpolator {
+	private readonly _maxCapacity;
+	private readonly _maxDeltaPosition;
+	private readonly _maxDeltaScale;
+	private readonly _maxDeltaRotation;
+	private readonly _maxDeltaAlpha;
+	private _containers;
+	private _capacity;
+	private _count;
+	private _prevCount;
+	private _buffer;
+	private _startX;
+	private _startY;
+	private _startRotation;
+	private _startScaleX;
+	private _startScaleY;
+	private _startAlpha;
+	private _endX;
+	private _endY;
+	private _endRotation;
+	private _endScaleX;
+	private _endScaleY;
+	private _endAlpha;
+	constructor({ capacity, maxCapacity, maxDeltaPosition, maxDeltaScale, maxDeltaRotation, maxDeltaAlpha, }?: ContainerInterpolatorOptions);
 	/**
-	 * The internal index number for interpolated containers.
-	 * @protected
+	 * Capture the previous state for some tree of containers.
+	 *
+	 * Only containers captured here will be included.
 	 */
-	_interpIdx?: number;
+	capture(target: Container): void;
 	/**
-	 * (Optional) Whether interpolation is enabled for a node and its descendants.
+	 * Apply blended frame state between previous and current.
 	 *
-	 * Set `getDefaultInterpolation( container )` on `InterpolatedTicker` to set the
-	 * default behavior.
+	 * @param t blended value clamped to (0, 1)
+	 */
+	blend(t: number): void;
+	/**
+	 * Restore state to current values.
+	 */
+	unblend(): void;
+	private _resizeCapacity;
+}
+/**
+ * A fixed-timestep ticker that separates updates from rendering.
+ *
+ * You update the scene graph in a fixed-timestep update loop, and it will
+ * interpolate the transform of Containers during rendering.
+ *
+ * @see https://gafferongames.com/post/fix_your_timestep/
+ */
+export declare class InterpolatedTicker extends Emits<{
+	devicefps: [
+		devicefps: number
+	];
+	fps: [
+		fps: number
+	];
+}> {
+	readonly fixedDeltaMS: number;
+	/**
+	 * Whether frame smoothing is enabled.
+	 */
+	interpolation: boolean;
+	/**
+	 * The rate that fixed updates are executed at, but does not
+	 * affect the `fixedDeltaMs` value, which is always constant.
+	 */
+	speed: number;
+	private _interpolationOptions?;
+	private _stage;
+	private _renderer;
+	private _maxFrameTimeMS;
+	private _rafRequestId?;
+	private _renderIntervalToleranceMS;
+	private _fpsIntervalMS;
+	private _fpsPrecision;
+	private _renderFPS;
+	private _minRenderMS;
+	constructor(options: InterpolatedTickerOptions);
+	/**
+	 * Whether the ticker has started.
+	 */
+	get started(): boolean;
+	/**
+	 * The target refresh rate (in frames per second). Actual render refresh
+	 * rate may vary.
 	 *
-	 * The default for most nodes is true.
+	 * A value of `0` means unlimited refresh rate.
+	 *
+	 * @default 0
+	 */
+	get renderFPS(): number;
+	set renderFPS(value: number);
+	/**
+	 * Start the requestAnimationFrame loop.
+	 */
+	start(options: StartOptions): this;
+	/**
+	 * Stop requestAnimationFrame loop.
+	 */
+	stop(): void;
+}
+export interface ContainerInterpolatorOptions {
+	/**
+	 * Maximum interpolatable change in position x/y.
+	 *
+	 * @default 100
+	 */
+	maxDeltaPosition?: number;
+	/**
+	 * Maximum interpolatable change in scale.
+	 *
+	 * @default 1
+	 */
+	maxDeltaScale?: number;
+	/**
+	 * Maximum interpolatable change in rotation.
+	 *
+	 * @default Math.PI/2
+	 */
+	maxDeltaRotation?: number;
+	/**
+	 * Maximum interpolatable change in alpha.
+	 *
+	 * @default 0.5
+	 */
+	maxDeltaAlpha?: number;
+	/**
+	 * Initial number of containers to preallocate interpolation memory for.
+	 *
+	 * @default 256
+	 */
+	capacity?: number;
+	/**
+	 * Maximum number of containers to allocate interpolation memory for.
+	 *
+	 * @default 4096
+	 */
+	maxCapacity?: number;
+}
+export interface IRendererLike {
+	render: (stage: Container) => void;
+}
+export interface InterpolatedTickerOptions {
+	/**
+	 * Render function provider.
+	 */
+	renderer: IRendererLike;
+	/**
+	 * Stage root view.
+	 */
+	stage: Container;
+	/**
+	 * Fixed timestep interval in milliseconds.
+	 *
+	 * @default 16.666666666666668
+	 */
+	fixedDeltaMS?: number;
+	/**
+	 * Whether frame smoothing is enabled.
+	 *
+	 * When enabled, container values (position, scale, rotation, alpha) are
+	 * rendered at interpolated positions.
+	 *
+	 * @default true
 	 */
 	interpolation?: boolean;
 	/**
-	 * (Optional) An array of child containers to include in interpolation.
-	 * When not set, all `children` are used.
-	 *
-	 * Default: `undefined`
+	 * Container interpolation options.
 	 */
-	interpolatedChildren?: Container[];
+	interpolationOptions?: ContainerInterpolatorOptions;
 	/**
-	 * (Optional) Set positional wraparound for a container.
+	 * The display refresh rate to target (in frames per second). Actual render
+	 * rate will vary on different displays.
 	 *
-	 * Default: `undefined`
+	 * A value of `0` means unlimited refresh rate.
+	 *
+	 * @default 0
 	 */
-	interpolationWraparound?: {
-		/** Range to wraparound. @example 200 would be -100 to 100. */
-		xRange: number;
-		/** Range to wraparound. @example 200 would be -100 to 100. */
-		yRange: number;
-	};
-};
+	renderFPS?: number;
+	/**
+	 * When `renderFPS` set, this is the maximum tolerance in milliseconds for
+	 * limiting the render frame interval.
+	 *
+	 * @default 7
+	 */
+	renderIntervalToleranceMS?: number;
+	/**
+	 * Maximum frame time in milliseconds that fixed updates may accrue for
+	 * before frame time stops accruing. Scaled by `speed`.
+	 *
+	 * @default fixedDeltaMs*3
+	 */
+	maxFrameTimeMS?: number;
+	/**
+	 * The minimum interval in milliseconds that fluctuations in FPS are reported.
+	 *
+	 * Listen for "fps" and "devicefps" events.
+	 *
+	 * @default 1000
+	 */
+	fpsIntervalMS?: number;
+	/**
+	 * The precision for FPS reporting.
+	 *
+	 * @default 1.0
+	 */
+	fpsPrecision?: number;
+}
+export interface StartOptions {
+	update: (fixedDeltaMS: number) => void;
+	prepareRender?: (renderDeltaMS: number) => void;
+	render?: (renderDeltaMS: number, blend: number) => void;
+}
+export type Listener<M extends Record<string, unknown[]>, K extends keyof M> = (...args: [
+	...M[K]
+]) => void;
 
 export {};

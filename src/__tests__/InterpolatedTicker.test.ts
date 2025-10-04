@@ -1,122 +1,183 @@
-import { Application, Container } from "pixi.js";
-import { InterpolatedTicker, InterpolatedContainer } from "../InterpolatedTicker";
+/* eslint-disable @typescript-eslint/explicit-function-return-type */
+import { InterpolatedTicker } from "../InterpolatedTicker";
+import { Container } from "pixi.js";
 
-/** Create mock application for testing */
-function mockApp(): Application
+// ---- Test doubles ----
+let now = 0;
+(globalThis as any).performance = { now: () => now };
+
+let rafId = 1;
+let rafCb: FrameRequestCallback | null = null;
+(globalThis as any).requestAnimationFrame = (cb: FrameRequestCallback) =>
+{
+  rafId++;
+  rafCb = cb;
+  return rafId;
+};
+(globalThis as any).cancelAnimationFrame = (id: number) =>
+{
+  if (id === rafId) rafCb = null;
+};
+
+// Mock fpsCounter to just call onChange immediately
+jest.mock("../fps", () => ({
+  fpsCounter: (opts: { onChange: (fps: number) => void }) =>
+  {
+    return (elapsedMs: number) =>
+    {
+      const fps = 1000 / (elapsedMs || 1);
+      opts.onChange(fps);
+    };
+  }
+}));
+
+// Mock ContainerInterpolator
+const capture = jest.fn();
+const blend = jest.fn();
+const unblend = jest.fn();
+jest.mock("../ContainerInterpolator", () =>
 {
   return {
-    stage: new Container(),
-    renderer: {
-      render: ( _stage: Container ) => {},
-    }
-  } as Application;
-}
+    ContainerInterpolator: jest.fn().mockImplementation(() => ({
+      capture,
+      blend,
+      unblend,
+    }))
+  };
+});
 
+// ---- Tests ----
 describe("InterpolatedTicker", () =>
 {
-  let app: Application;
+  let renderer: { render: jest.Mock };
+  let stage: Container;
   let ticker: InterpolatedTicker;
 
   beforeEach(() =>
   {
-    app = mockApp();
-    ticker = new InterpolatedTicker({
-      app,
-      autoLimitPosition: 1000,
-      autoLimitScale: 10,
-      autoLimitAlpha: 100,
-      autoLimitRotation: Math.PI * 2,
+    renderer = { render: jest.fn() };
+    stage = new Container();
+    ticker = new InterpolatedTicker({ renderer, stage });
+    capture.mockClear();
+    blend.mockClear();
+    unblend.mockClear();
+    renderer.render.mockClear();
+    now = 0;
+  });
+
+  function step(ms: number)
+  {
+    now += ms;
+    if (rafCb) rafCb(now);
+  }
+
+  test("starts and stops", () =>
+  {
+    expect(ticker.started).toBe(false);
+    ticker.start({ update: jest.fn() });
+    expect(ticker.started).toBe(true);
+    ticker.stop();
+    expect(ticker.started).toBe(false);
+  });
+
+  test("calls update on fixed timestep", () =>
+  {
+    const update = jest.fn();
+    ticker.start({ update });
+    step(20); // simulate 20 ms elapsed
+    expect(update).toHaveBeenCalled();
+  });
+
+  test("speed calls update twice as often when speed = 2", () =>
+  {
+    const update = jest.fn();
+    const ticker = new InterpolatedTicker({ renderer, stage });
+
+    ticker.start({ update });
+
+    // tick at normal speed
+    step(16.7);
+    step(16.7);
+
+    expect(update).toHaveBeenCalledTimes(2);
+
+    // tick at double speed
+    ticker.speed = 2;
+    step(16.7);
+    step(16.7);
+
+    expect(update).toHaveBeenCalledTimes(2 + 4);
+
+    ticker.speed = 0.5;
+    step(16.7);
+    step(16.7);
+
+    expect(update).toHaveBeenCalledTimes(2 + 4 + 1);
+  });
+
+  test("renders frame and calls renderer", () =>
+  {
+    const update = jest.fn();
+    ticker.start({ update });
+    step(20);
+    expect(renderer.render).toHaveBeenCalledWith(stage);
+  });
+
+  test("calls frame callbacks with blend", () =>
+  {
+    const began = jest.fn();
+    const blended = jest.fn();
+    ticker.interpolation = true;
+    ticker.start({
+      update: jest.fn(),
+      prepareRender: began,
+      render: blended,
     });
+    step(20);
+    expect(began).toHaveBeenCalled();
+    expect(blended).toHaveBeenCalledWith(expect.any(Number), expect.any(Number));
+    expect(capture).toHaveBeenCalled();
+    expect(blend).toHaveBeenCalled();
+    expect(unblend).toHaveBeenCalled();
   });
 
-  it("should initialize with default properties", () =>
+  test("skips blend if interpolation = false", () =>
   {
-    expect(ticker.updateIntervalMs).toBeCloseTo(16.6667);
-    expect(ticker.speed).toBe(1.0);
+    ticker.interpolation = false;
+    ticker.start({ update: jest.fn() });
+    step(20);
+    expect(capture).not.toHaveBeenCalled();
+    expect(blend).not.toHaveBeenCalled();
+    expect(unblend).not.toHaveBeenCalled();
   });
 
-  it("should allow setting and getting speed", () =>
+  test("renderFPS limits render frequency", () =>
   {
-    ticker.speed = 2.0;
+    ticker.renderFPS = 30; // ~33ms
+    ticker.start({ update: jest.fn() });
 
-    expect(ticker.speed).toBe(2.0);
-    expect(ticker.updateIntervalMs).toBeCloseTo(16.6667); // unaffected
-    expect(ticker["_updateIntervalMs"]).toBeCloseTo(8.3334); // internal clock
+    step(10); // too soon, should skip render
+    expect(renderer.render).not.toHaveBeenCalled();
+
+    step(30); // enough elapsed
+    expect(renderer.render).toHaveBeenCalled();
   });
 
-  it("should resize buffer when capacity is exceeded", () =>
+  test("emits devicefps and fps", () =>
   {
-    // note: not a great way to do this test
+    ticker.renderFPS = 30; // ~33ms
 
-    const initialCapacity = ticker["_capacity"];
-    ticker["_resizeBuffer"](initialCapacity * 2);
+    const deviceSpy = jest.fn();
+    const renderSpy = jest.fn();
+    ticker.on("devicefps", deviceSpy);
+    ticker.on("fps", renderSpy);
 
-    expect(ticker["_capacity"]).toBe(initialCapacity * 2);
-    expect(ticker["_prevX"].length).toBe(initialCapacity * 2);
-  });
-
-  it("should capture containers in a subtree", () =>
-  {
-    // note: not a great way to do this test
-
-    const root = new Container() as InterpolatedContainer;
-    const child1 = new Container() as InterpolatedContainer;
-    const child2 = new Container() as InterpolatedContainer;
-
-    root.addChild(child1, child2);
-    ticker["_captureContainersTraverseSubtree"](root);
-
-    expect(ticker["_idxContainersCount"]).toBe(3);
-  });
-
-  it("should interpolate container properties", () =>
-  {
-    // note: not a great way to do this test
-
-    const container = new Container() as InterpolatedContainer;
-    container.position.set(100, 100);
-    container.scale.set(1, 1);
-    container.rotation = 0;
-    container.alpha = 1;
-
-    ticker.updateIntervalMs = 1.0;
-    app.stage = container;
-
-    // write initial values
-    ticker["_captureContainers"]();
-
-    // sanity check:
-    expect(container.x).toBeCloseTo(100);
-    expect(container.y).toBeCloseTo(100);
-    expect(container.scale.x).toBeCloseTo(1);
-    expect(container.scale.y).toBeCloseTo(1);
-    expect(container.rotation).toBeCloseTo(0);
-    expect(container.alpha).toBeCloseTo(1);
-
-    // simulate update frame:
-    container.position.set(200, 200);
-    container.scale.set(2, 2);
-    container.rotation = Math.PI;
-    container.alpha = 0.5;
-
-    // simulate render:
-    ticker["_interpolateContainers"](0.5);
-
-    // mid-frame - i.e. the "render()" hook
-    expect(container.x).toBeCloseTo(150);
-    expect(container.y).toBeCloseTo(150);
-    expect(container.scale.x).toBeCloseTo(1.5);
-    expect(container.scale.y).toBeCloseTo(1.5);
-    expect(container.rotation).toBeCloseTo(Math.PI * 0.5);
-    expect(container.alpha).toBeCloseTo(0.75);
-
-    // restore
-    ticker["_restoreContainers"]();
-    expect(container.x).toBeCloseTo(200);
-    expect(container.y).toBeCloseTo(200);
-    expect(container.scale.x).toBeCloseTo(2);
-    expect(container.scale.y).toBeCloseTo(2);
-    expect(container.rotation).toBeCloseTo(Math.PI);
-    expect(container.alpha).toBeCloseTo(0.5);
+    ticker.start({ update: jest.fn() });
+    step(16);
+    expect(deviceSpy).toHaveBeenCalledWith(expect.any(Number));
+    expect(renderSpy).not.toHaveBeenCalledWith(expect.any(Number));
+    step(16);
+    expect(deviceSpy).toHaveBeenCalledWith(expect.any(Number));
+    expect(renderSpy).toHaveBeenCalledWith(expect.any(Number));
   });
 });
