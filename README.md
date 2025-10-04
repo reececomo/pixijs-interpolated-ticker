@@ -8,7 +8,7 @@
 <br>
 
 <p align="center">
-  🏃 Unlocked render FPS &ndash; decouple rendering from your update loop in PixiJS
+  🏃 Independent render FPS &ndash; update ticker in PixiJS
 </p>
 <br>
 
@@ -41,14 +41,14 @@
 
 ```ts
 const ticker = new InterpolatedTicker({ renderer, stage });
-const mySprite = new Sprite({ texture: "cat" });
+const mySprite = new Sprite({ texture: Assets.get("cat") });
 
 ticker.start({
-    // triggered at a fixed timestep
-    update: (fixedDeltaMs: number)
+    // triggered at a fixed interval
+    update: (fixedDeltaMS: number)
     {
-        mySprite.position.x += 10;
-        mySprite.rotation   += 0.1;
+        mySprite.x += 5;
+        mySprite.angle += 0.1;
     }
 });
 ```
@@ -72,7 +72,7 @@ ticker.start({
         //   fixedDeltaMS never changes
     },
 
-    render: (renderDeltaMs: number, progress: number)
+    render: (renderDeltaMS: number, progress: number)
     {
         // triggered at display refresh rate
         //   e.g. drawing additional particle effects, etc.
@@ -106,7 +106,7 @@ ticker.on("devicefps", (fps) =>
 ### Ticker Options
 
 ```ts
-new InterpolatedTicker({
+new InterpolatedTicker(options: {
     /**
      * PixiJS renderer.
      */
@@ -122,7 +122,7 @@ new InterpolatedTicker({
      *
      * @default 16.666666666666668
      */
-    fixedDeltaMs?: number;
+    fixedDeltaMS?: number;
 
     /**
      * Whether container interpolation is enabled.
@@ -205,9 +205,9 @@ new InterpolatedTicker({
      * Maximum frame time in milliseconds that fixed updates may accrue for
      * before frame time stops accruing. Scaled by `speed`.
      *
-     * @default fixedDeltaMs*3
+     * @default fixedDeltaMS*3
      */
-    maxFrameTimeMs?: number;
+    maxFrameTimeMS?: number;
 
     /**
      * The minimum interval in milliseconds that fluctuations in FPS are reported.
@@ -216,7 +216,7 @@ new InterpolatedTicker({
      *
      * @default 1000
      */
-    fpsIntervalMs?: number;
+    fpsIntervalMS?: number;
 
     /**
      * The rounding level for FPS detection (e.g. 0.01).

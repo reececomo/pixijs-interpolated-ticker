@@ -40,10 +40,6 @@ jobs:
             pixi-version: '8.0.0'
             typescript-version: '5.4.5'
 
-          - label: v8.x
-            pixi-version: '8.x.x'
-            typescript-version: '5.4.5'
-
     name: pixi.js ${{ matrix.label }} (@v${{ matrix.pixi-version }})
     steps:
       - uses: actions/checkout@v3
