@@ -21,55 +21,70 @@ declare module "pixi.js"
 export {};
 import { Container } from 'pixi.js';
 
-declare class Emits<M extends Record<string, any[]>> {
-	protected _listeners: {
-		[K in keyof M]?: Listener<M, K>[];
-	};
-	on<K extends keyof M>(key: K, fn: Listener<M, K>): this;
-	off<K extends keyof M>(key: K, fn: Listener<M, K>): this;
-	emit<K extends keyof M>(key: K, ...args: M[K]): void;
-}
+/**
+ * Utility that captures a tree of containers,
+ * and then allows you to blend/unblend the state.
+ *
+ * @example
+ * // adapted from https://gafferongames.com/post/fix_your_timestep/
+ * const tickMs = 1_000 / 60;
+ * function tick( tickMs ) {} // do world updates here
+ *
+ * let accumulatorMs = 0.0;
+ * let then = performance.now();
+ *
+ * // start
+ * requestAnimationFrame( frameHandler );
+ *
+ * function frameHandler( now )
+ * {
+ *     requestAnimationFrame( frameHandler ); // schedule immediately
+ *
+ *     accumulatorMs += Math.min( now - then, 40.0 );
+ *     then = now;
+ *
+ *     while ( accumulatorMs >= tickMs )
+ *     {
+ *         // capture containers "previous" state
+ *         containerInterpolator.capture( pixiApp.stage );
+ *
+ *         tick( tickMs );
+ *         accumulatorMs -= tickMs;
+ *     }
+ *
+ *     // apply blended container state
+ *     containerInterpolator.blend( accumulatorMs / tickMs );
+ *
+ *     pixiApp.renderer.render( pixiApp.stage );
+ *
+ *     // clear container interpolation
+ *     containerInterpolator.unblend();
+ * }
+ */
 export declare class ContainerInterpolator {
-	private readonly _maxCapacity;
-	private readonly _maxDeltaPosition;
-	private readonly _maxDeltaScale;
-	private readonly _maxDeltaRotation;
-	private readonly _maxDeltaAlpha;
-	private _containers;
-	private _capacity;
-	private _count;
-	private _prevCount;
-	private _buffer;
-	private _startX;
-	private _startY;
-	private _startRotation;
-	private _startScaleX;
-	private _startScaleY;
-	private _startAlpha;
-	private _endX;
-	private _endY;
-	private _endRotation;
-	private _endScaleX;
-	private _endScaleY;
-	private _endAlpha;
-	constructor({ capacity, maxCapacity, maxDeltaPosition, maxDeltaScale, maxDeltaRotation, maxDeltaAlpha, }?: ContainerInterpolatorOptions);
+	constructor(cfg?: ContainerInterpolatorOptions);
 	/**
-	 * Capture the previous state for some tree of containers.
+	 * Declares the previous state of containers. Only containers
+	 * captured here will be interpolated.
 	 *
-	 * Only containers captured here will be included.
+	 * This should be called before each `update()`.
 	 */
 	capture(target: Container): void;
 	/**
-	 * Apply blended frame state between previous and current.
+	 * Set containers state to a blend between previous captured
+	 * state and the current state.
 	 *
-	 * @param t blended value clamped to (0, 1)
+	 * This should be called before each `render()`.
+	 *
+	 * @param t blended value clamped to (0, 1)/
 	 */
 	blend(t: number): void;
 	/**
-	 * Restore state to current values.
+	 * Restore containers to current true values.
+	 *
+	 * This should be called after each `render()`.
 	 */
 	unblend(): void;
-	private _resizeCapacity;
 }
 /**
  * A fixed-timestep ticker that separates updates from rendering.
@@ -79,17 +94,10 @@ export declare class ContainerInterpolator {
  *
  * @see https://gafferongames.com/post/fix_your_timestep/
  */
-export declare class InterpolatedTicker extends Emits<{
-	devicefps: [
-		devicefps: number
-	];
-	fps: [
-		fps: number
-	];
-}> {
+export declare class InterpolatedTicker {
 	readonly fixedDeltaMS: number;
 	/**
-	 * Whether frame smoothing is enabled.
+	 * Whether container interpolation is enabled.
 	 */
 	interpolation: boolean;
 	/**
@@ -97,16 +105,8 @@ export declare class InterpolatedTicker extends Emits<{
 	 * affect the `fixedDeltaMs` value, which is always constant.
 	 */
 	speed: number;
-	private _interpolationOptions?;
-	private _stage;
-	private _renderer;
-	private _maxFrameTimeMS;
-	private _rafRequestId?;
-	private _renderIntervalToleranceMS;
-	private _fpsIntervalMS;
-	private _fpsPrecision;
-	private _renderFPS;
-	private _minRenderMS;
+	private stage;
+	private renderer;
 	constructor(options: InterpolatedTickerOptions);
 	/**
 	 * Whether the ticker has started.
@@ -130,6 +130,14 @@ export declare class InterpolatedTicker extends Emits<{
 	 * Stop requestAnimationFrame loop.
 	 */
 	stop(): void;
+	/**
+	 * Add an event listener.
+	 */
+	on<EventName extends keyof InterpolatedTickerEvent>(event: EventName, fn: Listener<EventName>): this;
+	/**
+	 * Remove an event listener.
+	 */
+	off<EventName extends keyof InterpolatedTickerEvent>(event: EventName, fn: Listener<EventName>): this;
 }
 export interface ContainerInterpolatorOptions {
 	/**
@@ -239,12 +247,54 @@ export interface InterpolatedTickerOptions {
 	fpsPrecision?: number;
 }
 export interface StartOptions {
+	/**
+	 * The fixed-timestep update/tick function.
+	 *
+	 * Any changes to containers made here will be
+	 * interpolated in the `render()` callback.
+	 */
 	update: (fixedDeltaMS: number) => void;
+	/**
+	 * A render frame is about to occur.
+	 *
+	 * Before container interpolation is applied.
+	 *
+	 * @example
+	 * prepareRender( renderDeltaMS ) // <-- You are here
+	 *
+	 * containerInterpolator.blend( blendAmount )
+	 *
+	 * render( renderDeltaMS, blendAmount )
+	 *
+	 * renderer.render( stage )
+	 */
 	prepareRender?: (renderDeltaMS: number) => void;
+	/**
+	 * A render frame is about to occur.
+	 *
+	 * After container interpolation is applied.
+	 *
+	 * @example
+	 * prepareRender( renderDeltaMS )
+	 *
+	 * containerInterpolator.blend( blendAmount )
+	 *
+	 * render( renderDeltaMS, blendAmount ) // <-- You are here
+	 *
+	 * renderer.render( stage )
+	 */
 	render?: (renderDeltaMS: number, blend: number) => void;
 }
-export type Listener<M extends Record<string, unknown[]>, K extends keyof M> = (...args: [
-	...M[K]
+export type InterpolatedTickerEvent = {
+	["devicefps"]: [
+		devicefps: number
+	];
+	["fps"]: [
+		fps: number
+	];
+};
+export type Listener<E extends keyof InterpolatedTickerEvent> = (...params: [
+	...InterpolatedTickerEvent[E]
 ]) => void;
 
 export {};

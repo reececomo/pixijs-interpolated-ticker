@@ -1,6 +1,6 @@
 {
   "name": "pixijs-interpolated-ticker",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "author": "Reece Como <reece.como@gmail.com>",
   "authors": [
     "Reece Como <reece.como@gmail.com>"
@@ -8,7 +8,7 @@
   "repository": "https://github.com/reececomo/pixijs-interpolated-ticker",
   "homepage": "https://github.com/reececomo/pixijs-interpolated-ticker#readme",
   "license": "MIT",
-  "description": "Fixed timestep with frame interpolation plugin for PixiJS.",
+  "description": "Fixed-Timestep Ticker (with container interpolation) PixiJS plugin",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
   "types": "./dist/index.d.ts",

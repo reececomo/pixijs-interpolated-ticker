@@ -1,5 +1,4 @@
 import type { Container } from "pixi.js";
-import { Emits } from "./events";
 import { fpsCounter } from "./fps";
 import { ContainerInterpolator, ContainerInterpolatorOptions } from "./ContainerInterpolator";
 
@@ -10,8 +9,44 @@ interface IRendererLike {
 
 export interface StartOptions
 {
+  /**
+   * The fixed-timestep update/tick function.
+   *
+   * Any changes to containers made here will be
+   * interpolated in the `render()` callback.
+   */
   update: (fixedDeltaMS: number) => void;
+
+  /**
+   * A render frame is about to occur.
+   *
+   * Before container interpolation is applied.
+   *
+   * @example
+   * prepareRender( renderDeltaMS ) // <-- You are here
+   *
+   * containerInterpolator.blend( blendAmount )
+   *
+   * render( renderDeltaMS, blendAmount )
+   *
+   * renderer.render( stage )
+   */
   prepareRender?: (renderDeltaMS: number) => void;
+
+  /**
+   * A render frame is about to occur.
+   *
+   * After container interpolation is applied.
+   *
+   * @example
+   * prepareRender( renderDeltaMS )
+   *
+   * containerInterpolator.blend( blendAmount )
+   *
+   * render( renderDeltaMS, blendAmount ) // <-- You are here
+   *
+   * renderer.render( stage )
+   */
   render?: (renderDeltaMS: number, blend: number) => void;
 }
 
@@ -94,6 +129,13 @@ export interface InterpolatedTickerOptions
 
 const EMPTY = (): void => {};
 
+type InterpolatedTickerEvent = {
+  ["devicefps"] : [devicefps: number];
+  ["fps"]       : [fps: number];
+};
+
+type Listener<E extends keyof InterpolatedTickerEvent> = (...params: [...InterpolatedTickerEvent[E]]) => void;
+
 /**
  * A fixed-timestep ticker that separates updates from rendering.
  *
@@ -102,15 +144,12 @@ const EMPTY = (): void => {};
  *
  * @see https://gafferongames.com/post/fix_your_timestep/
  */
-export class InterpolatedTicker extends Emits<{
-  devicefps: [devicefps: number];
-  fps: [fps: number];
-}>
+export class InterpolatedTicker
 {
   public readonly fixedDeltaMS: number;
 
   /**
-   * Whether frame smoothing is enabled.
+   * Whether container interpolation is enabled.
    */
   public interpolation: boolean;
 
@@ -120,38 +159,45 @@ export class InterpolatedTicker extends Emits<{
    */
   public speed = 1;
 
-  // ----- Internal properties: -----
-  private _interpolationOptions?: ContainerInterpolatorOptions;
-  private _stage: Container;
-  private _renderer: IRendererLike;
+  // ----- Private properties: -----
 
-  // fixed timestep:
-  private _maxFrameTimeMS: number;
-  private _rafRequestId?: number;
+  private stage: Container;
+  private renderer: IRendererLike;
+
+  // ----- Internal properties: -----
+
+  /** @internal */ private _$listeners: { [E in keyof InterpolatedTickerEvent]?: Listener<E>[] } = {};
+  /** @internal */ private _$interpolationOptions?: ContainerInterpolatorOptions;
+
+  // ----- Fixed timestep loop properties: -----
+
+  /** @internal */ private _$maxFrameTimeMS: number;
+  /** @internal */ private _$rafRequestId?: number;
+
+  // ----- Render loop properties: -----
 
   // render:
-  private _renderIntervalToleranceMS: number;
-  private _fpsIntervalMS: number;
-  private _fpsPrecision: number;
-  private _renderFPS = 0;
-  private _minRenderMS = 0;
+  /** @internal */ private _$renderIntervalToleranceMS: number;
+  /** @internal */ private _$fpsIntervalMS: number;
+  /** @internal */ private _$fpsPrecision: number;
+  /** @internal */ private _$renderFPS = 0;
+  /** @internal */ private _$minRenderMS = 0;
 
   // ----- Constructor: -----
+
   public constructor(options: InterpolatedTickerOptions)
   {
-    super();
-
     this.fixedDeltaMS = options.fixedDeltaMS ?? 1000/60;
     this.interpolation = options.interpolation ?? true;
 
-    this._renderer = options.renderer;
-    this._stage = options.stage;
-    this._interpolationOptions = options.interpolationOptions;
+    this.renderer = options.renderer;
+    this.stage = options.stage;
+    this._$interpolationOptions = options.interpolationOptions;
 
-    this._maxFrameTimeMS = options.maxFrameTimeMS ?? this.fixedDeltaMS * 3;
-    this._renderIntervalToleranceMS = options.renderIntervalToleranceMS ?? 7;
-    this._fpsIntervalMS = options.fpsIntervalMS ?? 1000;
-    this._fpsPrecision = options.fpsPrecision ?? 1;
+    this._$maxFrameTimeMS = options.maxFrameTimeMS ?? this.fixedDeltaMS * 3;
+    this._$renderIntervalToleranceMS = options.renderIntervalToleranceMS ?? 7;
+    this._$fpsIntervalMS = options.fpsIntervalMS ?? 1000;
+    this._$fpsPrecision = options.fpsPrecision ?? 1;
 
     // apply setter
     this.renderFPS = options.renderFPS ?? 0;
@@ -164,7 +210,7 @@ export class InterpolatedTicker extends Emits<{
    */
   public get started(): boolean
   {
-    return this._rafRequestId != null;
+    return this._$rafRequestId != null;
   }
 
   /**
@@ -175,22 +221,22 @@ export class InterpolatedTicker extends Emits<{
    *
    * @default 0
    */
-  public get renderFPS(): number { return this._renderFPS; }
+  public get renderFPS(): number { return this._$renderFPS; }
   public set renderFPS(value: number)
   {
     value = Math.max(value, 0);
-    this._renderFPS = value;
+    this._$renderFPS = value;
 
     if (value)
     {
       const avgIntervalMS = 1000/value;
-      const minIntervalMS = avgIntervalMS - this._renderIntervalToleranceMS;
+      const minIntervalMS = avgIntervalMS - this._$renderIntervalToleranceMS;
 
-      this._minRenderMS = minIntervalMS;
+      this._$minRenderMS = minIntervalMS;
     }
     else
     {
-      this._minRenderMS = 0;
+      this._$minRenderMS = 0;
     }
   }
 
@@ -204,24 +250,24 @@ export class InterpolatedTicker extends Emits<{
     if (this.started) this.stop();
 
     const trackdevicefps = fpsCounter({
-      onChange: (devicefps) => this.emit("devicefps", devicefps),
-      intervalMS: this._fpsIntervalMS,
-      precision: this._fpsPrecision,
+      onChange: (devicefps) => this._$emit("devicefps", devicefps),
+      intervalMS: this._$fpsIntervalMS,
+      precision: this._$fpsPrecision,
     });
 
     const trackfps = fpsCounter({
-      onChange: (fps) => this.emit("fps", fps),
-      intervalMS: this._fpsIntervalMS,
-      precision: this._fpsPrecision,
+      onChange: (fps) => this._$emit("fps", fps),
+      intervalMS: this._$fpsIntervalMS,
+      precision: this._$fpsPrecision,
     });
 
     const updateFn = options.update;
     const prepareRenderFn = options.prepareRender ?? EMPTY;
     const renderFn = options.render ?? EMPTY;
 
-    const interpolator = new ContainerInterpolator(this._interpolationOptions);
-    const renderer = this._renderer;
-    const stage = this._stage;
+    const interpolator = new ContainerInterpolator(this._$interpolationOptions);
+    const renderer = this.renderer;
+    const stage = this.stage;
 
     const fixedDeltaMS = this.fixedDeltaMS;
     const now = performance.now();
@@ -235,7 +281,7 @@ export class InterpolatedTicker extends Emits<{
     const frameHandler = (now: DOMHighResTimeStamp): void =>
     {
       // schedule next update immediately
-      this._rafRequestId = requestAnimationFrame(frameHandler);
+      this._$rafRequestId = requestAnimationFrame(frameHandler);
 
       // track frame time
       const elapsedMS = now - then;
@@ -243,7 +289,7 @@ export class InterpolatedTicker extends Emits<{
       trackdevicefps(elapsedMS);
 
       // accumulate scaled time
-      accumulatedMS += this.speed * Math.min(elapsedMS, this._maxFrameTimeMS);
+      accumulatedMS += this.speed * Math.min(elapsedMS, this._$maxFrameTimeMS);
 
       // -------------------------------------
       // Fixed timestep update:
@@ -264,7 +310,7 @@ export class InterpolatedTicker extends Emits<{
       const rendernow = performance.now();
       const renderMS = rendernow - renderthen;
 
-      if (renderMS >= this._minRenderMS)
+      if (renderMS >= this._$minRenderMS)
       {
         renderthen = rendernow;
         progress = blendFrame ? accumulatedMS/fixedDeltaMS : 1;
@@ -285,7 +331,7 @@ export class InterpolatedTicker extends Emits<{
     };
 
     // start
-    this._rafRequestId = requestAnimationFrame(frameHandler);
+    this._$rafRequestId = requestAnimationFrame(frameHandler);
 
     return this;
   }
@@ -295,12 +341,51 @@ export class InterpolatedTicker extends Emits<{
    */
   public stop(): void
   {
-    if (this._rafRequestId == null)
+    if (this._$rafRequestId == null)
     {
       return;
     }
 
-    cancelAnimationFrame(this._rafRequestId);
-    this._rafRequestId = undefined;
+    cancelAnimationFrame(this._$rafRequestId);
+    this._$rafRequestId = undefined;
+  }
+
+  // ----- Events: -----
+
+  /**
+   * Add an event listener.
+   */
+  public on<EventName extends keyof InterpolatedTickerEvent>(
+    event: EventName,
+    fn: Listener<EventName>
+  ): this
+  {
+    (this._$listeners[event] ??= []).push(fn);
+    return this;
+  }
+
+  /**
+   * Remove an event listener.
+   */
+  public off<EventName extends keyof InterpolatedTickerEvent>(
+    event: EventName,
+    fn: Listener<EventName>
+  ): this
+  {
+    this._$listeners[event] = (this._$listeners[event] ??= []).filter(l => l !== fn);
+    return this;
+  }
+
+  // ----- Private mehtods: -----
+
+  /**
+   * @internal
+   */
+  private _$emit<EventName extends keyof InterpolatedTickerEvent>(
+    event: EventName,
+    ...args: InterpolatedTickerEvent[EventName]
+  ): void
+  {
+    for (const fn of (this._$listeners[event] ??= [])) fn(...args);
   }
 }

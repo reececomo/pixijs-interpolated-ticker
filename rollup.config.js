@@ -24,7 +24,12 @@ export default [
       typescript(),
       terser({
         keep_classnames: true,
-        keep_fnames: true
+        keep_fnames: false,
+        mangle: {
+          properties: {
+            regex: /^_\$.*$/
+          },
+        },
       }),
     ],
   }
