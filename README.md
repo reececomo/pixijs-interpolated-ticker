@@ -69,19 +69,13 @@ ticker.start({
     update: (fixedDeltaMS: number)
     {
         // triggered at a fixed interval
-        //   fixedDeltaMS never changes
+        //   (fixedMS never changes)
     },
 
     render: (renderDeltaMS: number, progress: number)
     {
         // triggered at display refresh rate
         //   e.g. drawing additional particle effects, etc.
-    },
-
-    renderPrepare: (renderDeltaMS: number)
-    {
-        // triggered at display refresh rate
-        //   prior to container interpolation
     },
 });
 
@@ -102,6 +96,17 @@ ticker.on("devicefps", (fps) =>
     // device FPS updated (independent of actual renders)
 });
 ```
+
+### Lifecycle Event Hooks
+
+When starting the event loop, you may supply the following lifecycle event hooks
+
+| Hook | Event | Description |
+|---|---|---|
+| `update` | ***Required***<br/>Fixed timestep update | The core update loop of the program.<br/><br/>**Note:** Changes made to containers here will be interpolated in the render loop. This may be triggered zero, one or many times in a render call (based on the target `fixedDeltaMS` and interpolated ticker `speed`).<br/><br/>**Note:** Changing the interpolated ticker `speed` changes the true rate at which the update function is triggered, but `fixedDeltaMS` is not affected. |
+| `prepareRender` | *Optional*<br/>A render frame is about to render. | Changes made here to containers will affect the "end" state for container interpolation. Triggered at the start of each render cycle, before container interpolation. |
+| `render` | *Optional **(Recommended)***<br/>A render frame is about to render. | Triggered immediately before each `renderer.render()` call, after container interpolation.<br/><br/>**Note:** Changes made to containers here **will** be rendered, but may be reverted to its `prepareRender` state if the container was expecting to be interpolated. |
+| `postRender` | *Optional*<br/>A frame has been rendered. | Triggered after each `renderer.render()` call, after container interpolation is restored. |
 
 ### Ticker Options
 

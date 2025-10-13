@@ -125,7 +125,7 @@ export declare class InterpolatedTicker {
 	/**
 	 * Start the requestAnimationFrame loop.
 	 */
-	start(options: StartOptions): this;
+	start(hooks: LifecycleEventHooks): this;
 	/**
 	 * Stop requestAnimationFrame loop.
 	 */
@@ -246,7 +246,7 @@ export interface InterpolatedTickerOptions {
 	 */
 	fpsPrecision?: number;
 }
-export interface StartOptions {
+export interface LifecycleEventHooks {
 	/**
 	 * The fixed-timestep update/tick function.
 	 *
@@ -260,13 +260,11 @@ export interface StartOptions {
 	 * Before container interpolation is applied.
 	 *
 	 * @example
-	 * prepareRender( renderDeltaMS ) // <-- You are here
-	 *
-	 * containerInterpolator.blend( blendAmount )
-	 *
-	 * render( renderDeltaMS, blendAmount )
-	 *
-	 * renderer.render( stage )
+	 * event.prepareRender(…) // ⛳️ <-- You are here
+	 * // << containers interpolated
+	 * event.render(…)
+	 * // << PIXI renderer renders scene graph
+	 * event.postRender(…)
 	 */
 	prepareRender?: (renderDeltaMS: number) => void;
 	/**
@@ -275,15 +273,26 @@ export interface StartOptions {
 	 * After container interpolation is applied.
 	 *
 	 * @example
-	 * prepareRender( renderDeltaMS )
-	 *
-	 * containerInterpolator.blend( blendAmount )
-	 *
-	 * render( renderDeltaMS, blendAmount ) // <-- You are here
-	 *
-	 * renderer.render( stage )
+	 * event.prepareRender(…)
+	 * // << containers interpolated
+	 * event.render(…) // ⛳️ <-- You are here
+	 * // << PIXI renderer renders scene graph
+	 * event.postRender(…)
 	 */
 	render?: (renderDeltaMS: number, blend: number) => void;
+	/**
+	 * A render has completed and been sent.
+	 *
+	 * After container interpolation is applied.
+	 *
+	 * @example
+	 * event.prepareRender(…)
+	 * // << containers interpolated
+	 * event.render(…)
+	 * // << PIXI renderer renders scene graph
+	 * event.postRender(…) // ⛳️ <-- You are here
+	 */
+	postRender?: (renderDeltaMS: number) => void;
 }
 export type InterpolatedTickerEvent = {
 	["devicefps"]: [

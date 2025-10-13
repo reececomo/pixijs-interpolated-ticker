@@ -7,7 +7,7 @@ interface IRendererLike {
   render: (stage: Container) => void;
 }
 
-export interface StartOptions
+export interface LifecycleEventHooks
 {
   /**
    * The fixed-timestep update/tick function.
@@ -23,13 +23,11 @@ export interface StartOptions
    * Before container interpolation is applied.
    *
    * @example
-   * prepareRender( renderDeltaMS ) // <-- You are here
-   *
-   * containerInterpolator.blend( blendAmount )
-   *
-   * render( renderDeltaMS, blendAmount )
-   *
-   * renderer.render( stage )
+   * event.prepareRender(…) // ⛳️ <-- You are here
+   * // << containers interpolated
+   * event.render(…)
+   * // << PIXI renderer renders scene graph
+   * event.postRender(…)
    */
   prepareRender?: (renderDeltaMS: number) => void;
 
@@ -39,15 +37,27 @@ export interface StartOptions
    * After container interpolation is applied.
    *
    * @example
-   * prepareRender( renderDeltaMS )
-   *
-   * containerInterpolator.blend( blendAmount )
-   *
-   * render( renderDeltaMS, blendAmount ) // <-- You are here
-   *
-   * renderer.render( stage )
+   * event.prepareRender(…)
+   * // << containers interpolated
+   * event.render(…) // ⛳️ <-- You are here
+   * // << PIXI renderer renders scene graph
+   * event.postRender(…)
    */
   render?: (renderDeltaMS: number, blend: number) => void;
+
+  /**
+   * A render has completed and been sent.
+   *
+   * After container interpolation is applied.
+   *
+   * @example
+   * event.prepareRender(…)
+   * // << containers interpolated
+   * event.render(…)
+   * // << PIXI renderer renders scene graph
+   * event.postRender(…) // ⛳️ <-- You are here
+   */
+  postRender?: (renderDeltaMS: number) => void;
 }
 
 export interface InterpolatedTickerOptions
@@ -245,25 +255,26 @@ export class InterpolatedTicker
   /**
    * Start the requestAnimationFrame loop.
    */
-  public start(options: StartOptions): this
+  public start(hooks: LifecycleEventHooks): this
   {
     if (this.started) this.stop();
 
-    const trackdevicefps = fpsCounter({
+    const updateFn        = hooks.update; // REQUIRED
+    const prepareRenderFn = hooks.prepareRender ?? EMPTY;
+    const renderFn        = hooks.render ?? EMPTY;
+    const postRenderFn    = hooks.postRender ?? EMPTY;
+
+    const trackDeviceFPS = fpsCounter({
       onChange: (devicefps) => this._$emit("devicefps", devicefps),
       intervalMS: this._$fpsIntervalMS,
       precision: this._$fpsPrecision,
     });
 
-    const trackfps = fpsCounter({
+    const trackFPS = fpsCounter({
       onChange: (fps) => this._$emit("fps", fps),
       intervalMS: this._$fpsIntervalMS,
       precision: this._$fpsPrecision,
     });
-
-    const updateFn = options.update;
-    const prepareRenderFn = options.prepareRender ?? EMPTY;
-    const renderFn = options.render ?? EMPTY;
 
     const interpolator = new ContainerInterpolator(this._$interpolationOptions);
     const renderer = this.renderer;
@@ -286,7 +297,7 @@ export class InterpolatedTicker
       // track frame time
       const elapsedMS = now - then;
       then = now;
-      trackdevicefps(elapsedMS);
+      trackDeviceFPS(elapsedMS);
 
       // accumulate scaled time
       accumulatedMS += this.speed * Math.min(elapsedMS, this._$maxFrameTimeMS);
@@ -315,18 +326,18 @@ export class InterpolatedTicker
         renderthen = rendernow;
         progress = blendFrame ? accumulatedMS/fixedDeltaMS : 1;
 
-        // apply blended state
+        // pre-render hooks
         prepareRenderFn(renderMS);
         if (blendFrame) interpolator.blend(progress);
         renderFn(renderMS, progress);
 
-        // render
+        // PIXI render
         renderer.render(stage);
 
-        trackfps(renderMS);
-
-        // reset blended state
+        // post-render hooks
         if (blendFrame) interpolator.unblend();
+        trackFPS(renderMS);
+        postRenderFn(renderMS);
       }
     };
 

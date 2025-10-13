@@ -173,13 +173,13 @@ export class ContainerInterpolator
   public capture(target: Container): void
   {
     // refs
-    const containers    = this._$containers;
-    const startPositionX= this._$startPositionX;
-    const startPositionY= this._$startPositionY;
-    const startRotation = this._$startRotation;
-    const startScaleX   = this._$startScaleX;
-    const startScaleY   = this._$startScaleY;
-    const startAlpha    = this._$startAlpha;
+    const containers      = this._$containers;
+    const startPositionX  = this._$startPositionX;
+    const startPositionY  = this._$startPositionY;
+    const startRotation   = this._$startRotation;
+    const startScaleX     = this._$startScaleX;
+    const startScaleY     = this._$startScaleY;
+    const startAlpha      = this._$startAlpha;
 
     // reset counter
     this._$count = 0;
