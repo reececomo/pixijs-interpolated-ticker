@@ -1,6 +1,17 @@
 import type { Container } from "pixi.js";
 
 
+declare module "pixi.js"
+{
+  export interface Container
+  {
+    /**
+     * @internal
+     */
+    culled?: boolean | undefined;
+  }
+}
+
 export interface ContainerInterpolatorOptions
 {
   /**
@@ -194,7 +205,7 @@ export class ContainerInterpolator
       }
 
       const isInterpolated =
-        container.isInterpolated ?? container.visible;
+        container.isInterpolated ?? (container.visible && !container.culled);
 
       const hasInterpolatedChildren =
         container.hasInterpolatedChildren ?? isInterpolated;
