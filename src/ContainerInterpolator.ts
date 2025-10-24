@@ -1,15 +1,12 @@
 import type { Container } from "pixi.js";
 
 
-declare module "pixi.js"
+interface PixiCompatibilityContainer
 {
-  export interface Container
-  {
-    /**
-     * @internal
-     */
-    culled?: boolean | undefined;
-  }
+  /**
+   * @internal
+   */
+  culled?: boolean | undefined;
 }
 
 export interface ContainerInterpolatorOptions
@@ -205,7 +202,9 @@ export class ContainerInterpolator
       }
 
       const isInterpolated =
-        container.isInterpolated ?? (container.visible && !container.culled);
+        container.isInterpolated ?? (
+          container.visible && !(container as PixiCompatibilityContainer).culled
+        );
 
       const hasInterpolatedChildren =
         container.hasInterpolatedChildren ?? isInterpolated;
