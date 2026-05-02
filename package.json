@@ -1,6 +1,6 @@
 {
   "name": "pixijs-interpolated-ticker",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "author": "Reece Como <reece.como@gmail.com>",
   "authors": [
     "Reece Como <reece.como@gmail.com>"
@@ -23,7 +23,9 @@
     "build": "npm run build:rollup && npm run build:rm-dts && npm run build:dts-gen && npm run build:export-globals",
     "coverage": "jest --runInBand --collectCoverage",
     "lint": "eslint src --ext .ts",
-    "test": "jest --runInBand"
+    "lint:fix": "eslint src --ext .ts --fix",
+    "test": "jest --runInBand",
+    "prepublishOnly": "npm run lint:fix && npm run test && npm run build"
   },
   "peerDependencies": {
     "pixi.js": "^6.3.0 || ^7.0.0 || ^8.0.0"

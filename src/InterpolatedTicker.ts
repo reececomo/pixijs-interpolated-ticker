@@ -242,7 +242,7 @@ export class InterpolatedTicker
       const avgIntervalMS = 1000/value;
       const minIntervalMS = avgIntervalMS - this._$renderIntervalToleranceMS;
 
-      this._$minRenderMS = minIntervalMS;
+      this._$minRenderMS = Math.max(0, minIntervalMS);
     }
     else
     {
@@ -279,6 +279,8 @@ export class InterpolatedTicker
     const interpolator = new ContainerInterpolator(this._$interpolationOptions);
     const renderer = this.renderer;
     const stage = this.stage;
+
+    (window as any).ContainerInterpolator = interpolator;
 
     const fixedDeltaMS = this.fixedDeltaMS;
     const now = performance.now();
@@ -328,14 +330,14 @@ export class InterpolatedTicker
 
         // pre-render hooks
         prepareRenderFn(renderMS);
-        if (blendFrame) interpolator.blend(progress);
+        if (blendFrame) interpolator.lerp(progress);
         renderFn(renderMS, progress);
 
         // PIXI render
         renderer.render(stage);
 
         // post-render hooks
-        if (blendFrame) interpolator.unblend();
+        if (blendFrame) interpolator.unlerp();
         trackFPS(renderMS);
         postRenderFn(renderMS);
       }
@@ -387,7 +389,7 @@ export class InterpolatedTicker
     return this;
   }
 
-  // ----- Private mehtods: -----
+  // ----- Private methods: -----
 
   /**
    * @internal

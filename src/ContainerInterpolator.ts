@@ -12,38 +12,45 @@ interface PixiCompatibilityContainer
 export interface ContainerInterpolatorOptions
 {
   /**
-   * Maximum interpolatable change in position x/y.
+   * Maximum interpolatable change in `position.x` or `position.y`.
    *
    * @default 100
    */
-  maxDeltaPosition?: number;
+  maxPositionDelta?: number;
 
   /**
-   * Maximum interpolatable change in scale.
+   * Maximum interpolatable change in `pivot.x` or `pivot.y`.
+   *
+   * @default 100
+   */
+  maxPivotDelta?: number;
+
+  /**
+   * Maximum interpolatable change in `scale.x` or `scale.y`.
    *
    * @default 1
    */
-  maxDeltaScale?: number;
+  maxScaleDelta?: number;
 
   /**
-   * Maximum interpolatable change in rotation.
+   * Maximum interpolatable change in `skew.x` or `skew.y`.
    *
    * @default Math.PI/2
    */
-  maxDeltaRotation?: number;
+  maxSkewDelta?: number;
 
   /**
-   * Maximum interpolatable change in skew.
+   * Maximum interpolatable change in `rotation`.
    *
    * @default Math.PI/2
    */
-  maxDeltaSkew?: number;
+  maxRotationDelta?: number;
 
   /**
-   * Initial container memory capacity.
+   * Initial container capacity to allocate memory for.
    *
-   * Once reached, the memory buffers double in size until they
-   * reach `maxCapacity`.
+   * Capacity will double in size on-demand until `maxCapacity`
+   * is reached.
    *
    * @default 256
    */
@@ -58,73 +65,115 @@ export interface ContainerInterpolatorOptions
 }
 
 /**
+ * - flags
+ */
+const CONTAINER_HEADERS = 1;
+
+/**
  * - position.x
  * - position.y
  * - scale.x
  * - scale.y
+ * - rotation
  * - skew.x
  * - skew.y
- * - rotation
+ * - pivot.x
+ * - pivot.y
  */
-const ELEMENTS = 7;
+const CONTAINER_PROPS_FULL = 9;
+const BYTES_PER_ELEMENT = Float32Array.BYTES_PER_ELEMENT;
 
-/**
- * Float32Array.BYTES_PER_ELEMENT
- */
-const BYTES_PER_ELEMENT = 4;
-
-const DEFAULT_MAX_TRANSLATE_DELTA = 100;
+const DEFAULT_MAX_POSITION_DELTA = 100;
+const DEFAULT_MAX_PIVOT_DELTA = 100;
 const DEFAULT_MAX_SCALE_DELTA = 1;
 const DEFAULT_MAX_SKEW_DELTA = Math.PI/2;
-const DEFAULT_MAX_ROTATE_DELTA = Math.PI/2;
+const DEFAULT_MAX_ROTATION_DELTA = Math.PI/2;
 const DEFAULT_INITIAL_CAPACITY = 256;
 const DEFAULT_MAX_CAPACITY = 4096;
 
+const enum kFlag
+{
+  CHANGED_POSITION = 1,
+  CHANGED_SCALE = 2,
+  CHANGED_ROTATION = 4,
+  CHANGED_SKEW = 8,
+  CHANGED_PIVOT = 16,
+}
+
+const enum kOffset
+{
+  FLAGS,
+
+  POSX_0,
+  POSX_1,
+
+  POSY_0,
+  POSY_1,
+
+  SCALEX_0,
+  SCALEX_1,
+
+  SCALEY_0,
+  SCALEY_1,
+
+  ROT_0,
+  ROT_1,
+
+  SKEWX_0,
+  SKEWX_1,
+
+  SKEWY_0,
+  SKEWY_1,
+
+  PIVOTX_0,
+  PIVOTX_1,
+
+  PIVOTY_0,
+  PIVOTY_1,
+}
+
 /**
- * Utility that captures a tree of containers,
- * and then allows you to blend/unblend the state.
+ * Utility that manages transform state for a tree of
+ * PIXI Containers and can apply interpolation.
  *
  * @example
  * // adapted from https://gafferongames.com/post/fix_your_timestep/
- * const tickMs = 1_000 / 60;
- * function tick( tickMs ) {} // do world updates here
+ * // triggers a fixed interval "update()" function
+ * const dt = 16.67;
+ * let currentTime = performance.now();
+ * let accumulator = 0.0;
  *
- * let accumulatorMs = 0.0;
- * let then = performance.now();
- *
- * // start
- * requestAnimationFrame( frameHandler );
- *
- * function frameHandler( now )
+ * function frame( newTime: number )
  * {
- *     requestAnimationFrame( frameHandler ); // schedule immediately
+ *     requestAnimationFrame( frame ); // queue request immediately
  *
- *     accumulatorMs += Math.min( now - then, 40.0 );
- *     then = now;
+ *     const frameTime = Math.min( newTime - currentTime, 250 );
+ *     currentTime = newTime;
  *
- *     while ( accumulatorMs >= tickMs )
+ *     accumulator += frameTime;
+ *
+ *     while ( accumulator >= dt )
  *     {
- *         // capture containers "previous" state
- *         containerInterpolator.capture( pixiApp.stage );
- *
- *         tick( tickMs );
- *         accumulatorMs -= tickMs;
+ *         interpolator.capture( app.stage );
+ *         update( dt );
+ *         accumulator -= dt;
  *     }
  *
- *     // apply blended container state
- *     containerInterpolator.blend( accumulatorMs / tickMs );
+ *     interpolator.lerp( accumulator / dt );
  *
- *     pixiApp.renderer.render( pixiApp.stage );
+ *     app.renderer.render( app.stage );
  *
- *     // clear container interpolation
- *     containerInterpolator.unblend();
+ *     interpolator.unlerp();
  * }
+ *
+ * // start loop
+ * requestAnimationFrame( frame );
  */
 export class ContainerInterpolator
 {
   /**
-   * Declares the previous state of containers. Only containers
-   * captured here will be interpolated.
+   * Captures the known state of containers. Only containers
+   * captured in this call will be interpolated.
    *
    * This should be called before each `update()`.
    */
@@ -134,18 +183,18 @@ export class ContainerInterpolator
    * Set containers state to a linearly interpolated value between
    * previous captured state (`0`) and the current state (`1`).
    *
-   * This should be called before each `render()`.
+   * This should be called before render.
    *
-   * @param t blend value clamped to (0, 1)
+   * @param t - Blend value (0, 1)
    */
-  public readonly blend: (t: number) => void;
+  public readonly lerp: (t: number) => void;
 
   /**
-   * Restore containers to current true values.
+   * Restore containers to real values.
    *
-   * This should be called after each `render()`.
+   * This should be called after `render()`.
    */
-  public readonly unblend: () => void;
+  public readonly unlerp: () => void;
 
   // ----- Properties: -----
   private _$exhaustedCapacity = false;
@@ -153,97 +202,117 @@ export class ContainerInterpolator
   // ----- Methods: -----
   public constructor(cfg: ContainerInterpolatorOptions = {})
   {
-    const maxTranslateDelta = cfg.maxDeltaPosition ?? DEFAULT_MAX_TRANSLATE_DELTA;
-    const maxScaleDelta = cfg.maxDeltaScale ?? DEFAULT_MAX_SCALE_DELTA;
-    const maxSkewDelta = cfg.maxDeltaSkew ?? DEFAULT_MAX_SKEW_DELTA;
-    const maxRotateDelta = cfg.maxDeltaRotation ?? DEFAULT_MAX_ROTATE_DELTA;
+    const maxPositionDelta = cfg.maxPositionDelta ?? DEFAULT_MAX_POSITION_DELTA;
+    const maxPivotDelta = cfg.maxPivotDelta ?? DEFAULT_MAX_PIVOT_DELTA;
+    const maxScaleDelta = cfg.maxScaleDelta ?? DEFAULT_MAX_SCALE_DELTA;
+    const maxSkewDelta = cfg.maxSkewDelta ?? DEFAULT_MAX_SKEW_DELTA;
+    const maxRotationDelta = cfg.maxRotationDelta ?? DEFAULT_MAX_ROTATION_DELTA;
     const maxCapacity = cfg.maxCapacity ?? DEFAULT_MAX_CAPACITY;
 
     let capacity = Math.min(cfg.capacity ?? DEFAULT_INITIAL_CAPACITY, maxCapacity);
 
     // setup buffers
-    const propertyBytes = capacity * BYTES_PER_ELEMENT;
-    const totalBytes = propertyBytes * ELEMENTS * 2;
-    const buffer = new ArrayBuffer(totalBytes);
-
-    let bufferIndex = 0;
-
-    const _$alloc = (): Float32Array =>
-    {
-      const byteOffset = propertyBytes * bufferIndex++;
-
-      return new Float32Array(buffer, byteOffset, capacity);
-    };
+    const containerElements = CONTAINER_HEADERS + CONTAINER_PROPS_FULL * 2;
+    const bytesPerContainer = containerElements * BYTES_PER_ELEMENT;
+    const initialBytes = capacity * bytesPerContainer;
+    const initialBuffer = new ArrayBuffer(initialBytes);
 
     // refs:
-    let containers = new Array(capacity),
+    let containers = new Array(maxCapacity),
+      values = new Float32Array(initialBuffer),
       count = 0,
-      prevCount = 0,
-      // position.x
-      x0 = _$alloc(),
-      x1 = _$alloc(),
-      // position.y
-      y0 = _$alloc(),
-      y1 = _$alloc(),
-      // scale.x
-      xScale0 = _$alloc(),
-      xScale1 = _$alloc(),
-      // scale.y
-      yScale0 = _$alloc(),
-      yScale1 = _$alloc(),
-      // skew.x
-      xSkew0 = _$alloc(),
-      xSkew1 = _$alloc(),
-      // skew.y
-      ySkew0 = _$alloc(),
-      ySkew1 = _$alloc(),
-      // rotation
-      r0 = _$alloc(),
-      r1 = _$alloc();
+      prevCount = 0;
 
     const _$resizeBuffer = (newCapacity: number): void =>
     {
       newCapacity = Math.min(newCapacity, maxCapacity);
 
-      const propertyBytes = newCapacity * BYTES_PER_ELEMENT;
-      const totalBytes = propertyBytes * ELEMENTS * 2;
-      const buffer = new ArrayBuffer(totalBytes);
+      const newBytes = newCapacity * bytesPerContainer;
+      const newBuffer = new ArrayBuffer(newBytes);
+      const newValues = new Float32Array(newBuffer);
 
-      let bufferIndex = 0;
+      newValues.set(values);
 
-      const _$allocCopy = (previousView: Float32Array): Float32Array =>
-      {
-        const byteOffset = propertyBytes * bufferIndex++;
-        const array = new Float32Array(buffer, byteOffset, newCapacity);
-
-        array.set(previousView);
-
-        return array;
-      };
-
-      // update state
       capacity = newCapacity;
-      // position.x
-      x0 = _$allocCopy(x0);
-      x1 = _$allocCopy(x1);
-      // position.y
-      y0 = _$allocCopy(y0);
-      y1 = _$allocCopy(y1);
-      // scale.x
-      xScale0 = _$allocCopy(xScale0);
-      xScale1 = _$allocCopy(xScale1);
-      // scale.y
-      yScale0 = _$allocCopy(yScale0);
-      yScale1 = _$allocCopy(yScale1);
-      // skew.x
-      xSkew0 = _$allocCopy(xSkew0);
-      xSkew1 = _$allocCopy(xSkew1);
-      // skew.y
-      ySkew0 = _$allocCopy(ySkew0);
-      ySkew1 = _$allocCopy(ySkew1);
-      // rotation
-      r0 = _$allocCopy(r0);
-      r1 = _$allocCopy(r1);
+      values = newValues;
+    };
+
+
+    // capture containers subtree
+    const captureContainers = (container: Container, depth: number): void =>
+    {
+      if (container.destroyed)
+      {
+        // skip container and children
+        return;
+      }
+
+      const isInterpolated =
+        container.isInterpolated ?? (
+          container.visible && !(container as PixiCompatibilityContainer).culled
+        );
+
+      const hasInterpolatedChildren =
+        container.hasInterpolatedChildren ?? isInterpolated;
+
+      if (isInterpolated)
+      {
+        // on first touch, set interpolation to true
+        container.isInterpolated ??= true;
+
+        // reserve a container index
+        const i = count;
+
+        // auto-resize buffer
+        if (i >= capacity)
+        {
+          // ran out of allocations, end abruptly
+          if (capacity >= maxCapacity)
+          {
+            if (!this._$exhaustedCapacity)
+            {
+              console.error(
+                "[ContainerInterpolator] exhausted maximum capacity:",
+                maxCapacity
+              );
+
+              this._$exhaustedCapacity = true;
+            }
+
+            // early exit: skip the rest of the capture phase
+            return;
+          }
+
+          _$resizeBuffer(capacity * 2);
+        }
+
+        count += 1;
+
+        // capture local transform
+        containers[i] = container;
+
+        const j = i * containerElements;
+
+        values[j + kOffset.POSX_0] = container.position._x;
+        values[j + kOffset.POSY_0] = container.position._y;
+        values[j + kOffset.SCALEX_0] = container.scale._x;
+        values[j + kOffset.SCALEY_0] = container.scale._y;
+        values[j + kOffset.ROT_0] = container.rotation;
+        values[j + kOffset.SKEWX_0] = container.skew._x;
+        values[j + kOffset.SKEWY_0] = container.skew._y;
+        values[j + kOffset.PIVOTX_0] = container.pivot._x;
+        values[j + kOffset.PIVOTY_0] = container.pivot._y;
+      }
+
+      if (hasInterpolatedChildren)
+      {
+        const children = container.children as Container[];
+
+        for (let i = 0; i < children.length; i++)
+        {
+          captureContainers(children[i]!, depth+1);
+        }
+      }
     };
 
     // Methods:
@@ -251,78 +320,6 @@ export class ContainerInterpolator
     {
       // reset counter
       count = 0;
-
-      // capture containers subtree
-      const captureContainers = (container: Container, depth: number): void =>
-      {
-        if (container.destroyed)
-        {
-          // skip container and children
-          return;
-        }
-
-        const isInterpolated =
-          container.isInterpolated ?? (
-            container.visible && !(container as PixiCompatibilityContainer).culled
-          );
-
-        const hasInterpolatedChildren =
-          container.hasInterpolatedChildren ?? isInterpolated;
-
-        if (isInterpolated)
-        {
-          // on first touch, set interpolation to true
-          container.isInterpolated ??= true;
-
-          // reserve a container index
-          const i = count++;
-
-          // auto-resize buffer
-          if (i >= capacity)
-          {
-            // ran out of allocations, end abruptly
-            if (capacity >= maxCapacity)
-            {
-              if (!this._$exhaustedCapacity)
-              {
-                console.error(
-                  "[ContainerInterpolator] exhausted maximum capacity:",
-                  maxCapacity
-                );
-
-                this._$exhaustedCapacity = true;
-              }
-
-              // early exit: skip the rest of the capture phase
-              return;
-            }
-
-            _$resizeBuffer(capacity * 2);
-          }
-
-          // save container ref
-          containers[i] = container;
-
-          // capture properties
-          x0[i] = container.position._x;
-          y0[i] = container.position._y;
-          xScale0[i] = container.scale._x;
-          yScale0[i] = container.scale._y;
-          xSkew0[i] = container.skew._x;
-          ySkew0[i] = container.skew._y;
-          r0[i] = container.rotation;
-        }
-
-        if (hasInterpolatedChildren)
-        {
-          const children = container.children as Container[];
-
-          for (let i = 0; i < children.length; i++)
-          {
-            captureContainers(children[i]!, depth+1);
-          }
-        }
-      };
 
       captureContainers(target, 0);
 
@@ -336,17 +333,20 @@ export class ContainerInterpolator
       prevCount = count;
     };
 
-    // blend refs:
+    // lerp refs:
     let container: Container;
-    let dx: number;
-    let dy: number;
-    let dr: number;
-    let dScaleX: number;
-    let dScaleY: number;
-    let dSkewX: number;
-    let dSkewY: number;
+    let changeMask: number;
+    let deltaPosX: number;
+    let deltaPosY: number;
+    let deltaRot: number;
+    let deltaScaleX: number;
+    let deltaScaleY: number;
+    let deltaSkewX: number;
+    let deltaSkewY: number;
+    let deltaPivotX: number;
+    let deltaPivotY: number;
 
-    this.blend = (t: number): void =>
+    this.lerp = (t: number): void =>
     {
       // clamp
       t = Math.min(1, Math.max(0, t));
@@ -362,37 +362,91 @@ export class ContainerInterpolator
         }
 
         // capture end values and calculate the total delta
-        dx = (x1[i] = container.position._x) - x0[i]!;
-        dy = (y1[i] = container.position._y) - y0[i]!;
-        dScaleX = (xScale1[i] = container.scale._x) - xScale0[i]!;
-        dScaleY = (yScale1[i] = container.scale._y) - yScale0[i]!;
-        dSkewX = (xSkew1[i] = container.skew._x) - xSkew0[i]!;
-        dSkewY = (ySkew1[i] = container.skew._y) - ySkew0[i]!;
-        dr = (r1[i] = container.rotation) - r0[i]!;
+        const j = i * containerElements;
+        deltaPosX = (values[j + kOffset.POSX_1] = container.position._x) - values[j + kOffset.POSX_0]!;
+        deltaPosY = (values[j + kOffset.POSY_1] = container.position._y) - values[j + kOffset.POSY_0]!;
+        deltaScaleX = (values[j + kOffset.SCALEX_1] = container.scale._x) - values[j + kOffset.SCALEX_0]!;
+        deltaScaleY = (values[j + kOffset.SCALEY_1] = container.scale._y) - values[j + kOffset.SCALEY_0]!;
+        deltaRot = (values[j + kOffset.ROT_1] = container.rotation) - values[j + kOffset.ROT_0]!;
+        deltaSkewX = (values[j + kOffset.SKEWX_1] = container.skew._x) - values[j + kOffset.SKEWX_0]!;
+        deltaSkewY = (values[j + kOffset.SKEWY_1] = container.skew._y) - values[j + kOffset.SKEWY_0]!;
+        deltaPivotX = (values[j + kOffset.PIVOTX_1] = container.pivot._x) - values[j + kOffset.PIVOTX_0]!;
+        deltaPivotY = (values[j + kOffset.PIVOTY_1] = container.pivot._y) - values[j + kOffset.PIVOTY_0]!;
 
-        if (Math.abs(dx) <= maxTranslateDelta && Math.abs(dy) <= maxTranslateDelta)
+        // apply interpolation (otherwise remain in t=1 state):
+        changeMask = 0;
+
+        if (
+          (deltaPosX !== 0 || deltaPosY !== 0)
+          && Math.abs(deltaPosX) <= maxPositionDelta
+          && Math.abs(deltaPosY) <= maxPositionDelta
+        )
         {
-          container.position.set(x0[i]! + dx * t, y0[i]! + dy * t);
+          container.position.set(
+            values[j + kOffset.POSX_0]! + deltaPosX * t,
+            values[j + kOffset.POSY_0]! + deltaPosY * t
+          );
+
+          changeMask |= kFlag.CHANGED_POSITION;
         }
 
-        if (Math.abs(dScaleX) <= maxScaleDelta && Math.abs(dScaleY) <= maxScaleDelta)
+        if (
+          (deltaScaleX !== 0 || deltaScaleY !== 0)
+          && Math.abs(deltaScaleX) <= maxScaleDelta
+          && Math.abs(deltaScaleY) <= maxScaleDelta
+        )
         {
-          container.scale.set(xScale0[i]! + dScaleX * t, yScale0[i]! + dScaleY * t);
+          container.scale.set(
+            values[j + kOffset.SCALEX_0]! + deltaScaleX * t,
+            values[j + kOffset.SCALEY_0]! + deltaScaleY * t
+          );
+
+          changeMask |= kFlag.CHANGED_SCALE;
         }
 
-        if (Math.abs(dSkewX) <= maxSkewDelta && Math.abs(dSkewY) <= maxSkewDelta)
+        if (
+          deltaRot !== 0
+          && Math.abs(deltaRot) <= maxRotationDelta
+        )
         {
-          container.skew.set(xSkew0[i]! + dSkewX * t, ySkew0[i]! + dSkewY * t);
+          container.rotation = values[j + kOffset.ROT_0]! + deltaRot * t;
+
+          changeMask |= kFlag.CHANGED_ROTATION;
         }
 
-        if (Math.abs(dr) <= maxRotateDelta)
+        if (
+          (deltaSkewY !== 0 || deltaSkewX !== 0)
+          && Math.abs(deltaSkewY) <= maxSkewDelta
+          && Math.abs(deltaSkewX) <= maxSkewDelta
+        )
         {
-          container.rotation = r0[i]! + dr * t;
+          container.skew.set(
+            values[j + kOffset.SKEWX_0]! + deltaSkewX * t,
+            values[j + kOffset.SKEWY_0]! + deltaSkewY * t
+          );
+
+          changeMask |= kFlag.CHANGED_SKEW;
         }
+
+        if (
+          (deltaPivotX !== 0 || deltaPivotY !== 0)
+          && Math.abs(deltaPivotX) <= maxPivotDelta
+          && Math.abs(deltaPivotY) <= maxPivotDelta
+        )
+        {
+          container.pivot.set(
+            values[j + kOffset.PIVOTX_0]! + deltaPivotX * t,
+            values[j + kOffset.PIVOTY_0]! + deltaPivotY * t
+          );
+
+          changeMask |= kFlag.CHANGED_PIVOT;
+        }
+
+        values[j + kOffset.FLAGS] = changeMask;
       }
     };
 
-    this.unblend = (): void =>
+    this.unlerp = (): void =>
     {
       let container: Container;
 
@@ -405,11 +459,53 @@ export class ContainerInterpolator
           continue; // skip: bad reference
         }
 
-        // clear
-        container.position.set(x1[i]!, y1[i]!);
-        container.scale.set(xScale1[i]!, yScale1[i]!);
-        container.skew.set(xSkew1[i]!, ySkew1[i]!);
-        container.rotation = r1[i]!;
+        // reset local transform
+        const j = i * containerElements;
+
+        changeMask = values[j + kOffset.FLAGS]!;
+
+        if (changeMask === 0)
+        {
+          // skip: no changes
+          continue;
+        }
+
+        if (changeMask & kFlag.CHANGED_POSITION)
+        {
+          container.position.set(
+            values[j + kOffset.POSX_1]!,
+            values[j + kOffset.POSY_1]!
+          );
+        }
+
+        if (changeMask & kFlag.CHANGED_SCALE)
+        {
+          container.scale.set(
+            values[j + kOffset.SCALEX_1]!,
+            values[j + kOffset.SCALEY_1]!
+          );
+        }
+
+        if (changeMask & kFlag.CHANGED_ROTATION)
+        {
+          container.rotation = values[j + kOffset.ROT_1]!;
+        }
+
+        if (changeMask & kFlag.CHANGED_SKEW)
+        {
+          container.skew.set(
+            values[j + kOffset.SKEWX_1]!,
+            values[j + kOffset.SKEWY_1]!
+          );
+        }
+
+        if (changeMask & kFlag.CHANGED_PIVOT)
+        {
+          container.pivot.set(
+            values[j + kOffset.PIVOTX_1]!,
+            values[j + kOffset.PIVOTY_1]!
+          );
+        }
       }
     };
   }

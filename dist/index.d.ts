@@ -22,69 +22,67 @@ export {};
 import { Container } from 'pixi.js';
 
 /**
- * Utility that captures a tree of containers,
- * and then allows you to blend/unblend the state.
+ * Utility that manages transform state for a tree of
+ * PIXI Containers and can apply interpolation.
  *
  * @example
  * // adapted from https://gafferongames.com/post/fix_your_timestep/
- * const tickMs = 1_000 / 60;
- * function tick( tickMs ) {} // do world updates here
+ * // triggers a fixed interval "update()" function
+ * const dt = 16.67;
+ * let currentTime = performance.now();
+ * let accumulator = 0.0;
  *
- * let accumulatorMs = 0.0;
- * let then = performance.now();
- *
- * // start
- * requestAnimationFrame( frameHandler );
- *
- * function frameHandler( now )
+ * function frame( newTime: number )
  * {
- *     requestAnimationFrame( frameHandler ); // schedule immediately
+ *     requestAnimationFrame( frame ); // queue request immediately
  *
- *     accumulatorMs += Math.min( now - then, 40.0 );
- *     then = now;
+ *     const frameTime = Math.min( newTime - currentTime, 250 );
+ *     currentTime = newTime;
  *
- *     while ( accumulatorMs >= tickMs )
+ *     accumulator += frameTime;
+ *
+ *     while ( accumulator >= dt )
  *     {
- *         // capture containers "previous" state
- *         containerInterpolator.capture( pixiApp.stage );
- *
- *         tick( tickMs );
- *         accumulatorMs -= tickMs;
+ *         interpolator.capture( app.stage );
+ *         update( dt );
+ *         accumulator -= dt;
  *     }
  *
- *     // apply blended container state
- *     containerInterpolator.blend( accumulatorMs / tickMs );
+ *     interpolator.lerp( accumulator / dt );
  *
- *     pixiApp.renderer.render( pixiApp.stage );
+ *     app.renderer.render( app.stage );
  *
- *     // clear container interpolation
- *     containerInterpolator.unblend();
+ *     interpolator.unlerp();
  * }
+ *
+ * // start loop
+ * requestAnimationFrame( frame );
  */
 export declare class ContainerInterpolator {
-	constructor(cfg?: ContainerInterpolatorOptions);
 	/**
-	 * Declares the previous state of containers. Only containers
-	 * captured here will be interpolated.
+	 * Captures the known state of containers. Only containers
+	 * captured in this call will be interpolated.
 	 *
 	 * This should be called before each `update()`.
 	 */
-	capture(target: Container): void;
+	readonly capture: (target: Container) => void;
 	/**
-	 * Set containers state to a blend between previous captured
-	 * state and the current state.
+	 * Set containers state to a linearly interpolated value between
+	 * previous captured state (`0`) and the current state (`1`).
 	 *
-	 * This should be called before each `render()`.
+	 * This should be called before render.
 	 *
-	 * @param t blended value clamped to (0, 1)/
+	 * @param t - Blend value (0, 1)
 	 */
-	blend(t: number): void;
+	readonly lerp: (t: number) => void;
 	/**
-	 * Restore containers to current true values.
+	 * Restore containers to real values.
 	 *
-	 * This should be called after each `render()`.
+	 * This should be called after `render()`.
 	 */
-	unblend(): void;
+	readonly unlerp: () => void;
+	private _$exhaustedCapacity;
+	constructor(cfg?: ContainerInterpolatorOptions);
 }
 /**
  * A fixed-timestep ticker that separates updates from rendering.
@@ -141,37 +139,46 @@ export declare class InterpolatedTicker {
 }
 export interface ContainerInterpolatorOptions {
 	/**
-	 * Maximum interpolatable change in position x/y.
+	 * Maximum interpolatable change in `position.x` or `position.y`.
 	 *
 	 * @default 100
 	 */
-	maxDeltaPosition?: number;
+	maxPositionDelta?: number;
 	/**
-	 * Maximum interpolatable change in scale.
+	 * Maximum interpolatable change in `pivot.x` or `pivot.y`.
+	 *
+	 * @default 100
+	 */
+	maxPivotDelta?: number;
+	/**
+	 * Maximum interpolatable change in `scale.x` or `scale.y`.
 	 *
 	 * @default 1
 	 */
-	maxDeltaScale?: number;
+	maxScaleDelta?: number;
 	/**
-	 * Maximum interpolatable change in rotation.
+	 * Maximum interpolatable change in `skew.x` or `skew.y`.
 	 *
 	 * @default Math.PI/2
 	 */
-	maxDeltaRotation?: number;
+	maxSkewDelta?: number;
 	/**
-	 * Maximum interpolatable change in alpha.
+	 * Maximum interpolatable change in `rotation`.
 	 *
-	 * @default 0.5
+	 * @default Math.PI/2
 	 */
-	maxDeltaAlpha?: number;
+	maxRotationDelta?: number;
 	/**
-	 * Initial number of containers to preallocate interpolation memory for.
+	 * Initial container capacity to allocate memory for.
+	 *
+	 * Capacity will double in size on-demand until `maxCapacity`
+	 * is reached.
 	 *
 	 * @default 256
 	 */
 	capacity?: number;
 	/**
-	 * Maximum number of containers to allocate interpolation memory for.
+	 * Maximum containers that can be interpolated.
 	 *
 	 * @default 4096
 	 */
