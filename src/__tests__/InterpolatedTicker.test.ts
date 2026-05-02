@@ -33,15 +33,15 @@ jest.mock("../fps", () => ({
 
 // Mock ContainerInterpolator
 const capture = jest.fn();
-const blend = jest.fn();
-const unblend = jest.fn();
+const lerp = jest.fn();
+const unlerp = jest.fn();
 jest.mock("../ContainerInterpolator", () =>
 {
   return {
     ContainerInterpolator: jest.fn().mockImplementation(() => ({
       capture,
-      blend,
-      unblend,
+      lerp,
+      unlerp,
     }))
   };
 });
@@ -59,8 +59,8 @@ describe("InterpolatedTicker", () =>
     stage = new Container();
     ticker = new InterpolatedTicker({ renderer, stage });
     capture.mockClear();
-    blend.mockClear();
-    unblend.mockClear();
+    lerp.mockClear();
+    unlerp.mockClear();
     renderer.render.mockClear();
     now = 0;
   });
@@ -123,32 +123,32 @@ describe("InterpolatedTicker", () =>
     expect(renderer.render).toHaveBeenCalledWith(stage);
   });
 
-  test("calls frame callbacks with blend", () =>
+  test("calls frame callbacks with lerp", () =>
   {
     const began = jest.fn();
-    const blended = jest.fn();
+    const lerped = jest.fn();
     ticker.interpolation = true;
     ticker.start({
       update: jest.fn(),
       prepareRender: began,
-      render: blended,
+      render: lerped,
     });
     step(20);
     expect(began).toHaveBeenCalled();
-    expect(blended).toHaveBeenCalledWith(expect.any(Number), expect.any(Number));
+    expect(lerped).toHaveBeenCalledWith(expect.any(Number), expect.any(Number));
     expect(capture).toHaveBeenCalled();
-    expect(blend).toHaveBeenCalled();
-    expect(unblend).toHaveBeenCalled();
+    expect(lerp).toHaveBeenCalled();
+    expect(unlerp).toHaveBeenCalled();
   });
 
-  test("skips blend if interpolation = false", () =>
+  test("skips lerp if interpolation = false", () =>
   {
     ticker.interpolation = false;
     ticker.start({ update: jest.fn() });
     step(20);
     expect(capture).not.toHaveBeenCalled();
-    expect(blend).not.toHaveBeenCalled();
-    expect(unblend).not.toHaveBeenCalled();
+    expect(lerp).not.toHaveBeenCalled();
+    expect(unlerp).not.toHaveBeenCalled();
   });
 
   test("renderFPS limits render frequency", () =>
