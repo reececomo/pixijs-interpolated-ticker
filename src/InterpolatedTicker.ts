@@ -371,7 +371,7 @@ export class InterpolatedTicker
     fn: Listener<EventName>
   ): this
   {
-    (this._$listeners[event] ??= []).push(fn);
+    (this._$listeners[event] ??= [] as any).push(fn);
     return this;
   }
 

@@ -33,30 +33,52 @@ export interface ContainerInterpolatorOptions
   maxDeltaRotation?: number;
 
   /**
-   * Maximum interpolatable change in alpha.
+   * Maximum interpolatable change in skew.
    *
-   * @default 0.5
+   * @default Math.PI/2
    */
-  maxDeltaAlpha?: number;
+  maxDeltaSkew?: number;
 
   /**
-   * Initial number of containers to preallocate interpolation memory for.
+   * Initial container memory capacity.
+   *
+   * Once reached, the memory buffers double in size until they
+   * reach `maxCapacity`.
    *
    * @default 256
    */
   capacity?: number;
 
   /**
-   * Maximum number of containers to allocate interpolation memory for.
+   * Maximum containers that can be interpolated.
    *
    * @default 4096
    */
   maxCapacity?: number;
 }
 
-const BUFFERS     = 2; // start, end
-const PROPERTIES  = 6; // position.{x,y}, scale.{x,y}, rotation, alpha
-const BYTES_PER_ELEMENT = Float32Array.BYTES_PER_ELEMENT;
+/**
+ * - position.x
+ * - position.y
+ * - scale.x
+ * - scale.y
+ * - skew.x
+ * - skew.y
+ * - rotation
+ */
+const ELEMENTS = 7;
+
+/**
+ * Float32Array.BYTES_PER_ELEMENT
+ */
+const BYTES_PER_ELEMENT = 4;
+
+const DEFAULT_MAX_TRANSLATE_DELTA = 100;
+const DEFAULT_MAX_SCALE_DELTA = 1;
+const DEFAULT_MAX_SKEW_DELTA = Math.PI/2;
+const DEFAULT_MAX_ROTATE_DELTA = Math.PI/2;
+const DEFAULT_INITIAL_CAPACITY = 256;
+const DEFAULT_MAX_CAPACITY = 4096;
 
 /**
  * Utility that captures a tree of containers,
@@ -100,42 +122,48 @@ const BYTES_PER_ELEMENT = Float32Array.BYTES_PER_ELEMENT;
  */
 export class ContainerInterpolator
 {
-  // ----- Settings: -----
-  /** @internal */ private readonly _$maxCapacity: number;
-  /** @internal */ private readonly _$maxDeltaPosition: number;
-  /** @internal */ private readonly _$maxDeltaScale: number;
-  /** @internal */ private readonly _$maxDeltaRotation: number;
-  /** @internal */ private readonly _$maxDeltaAlpha: number;
+  /**
+   * Declares the previous state of containers. Only containers
+   * captured here will be interpolated.
+   *
+   * This should be called before each `update()`.
+   */
+  public readonly capture: (target: Container) => void;
 
-  // ----- Container state: -----
-  /** @internal */ private _$containers: Container[];
-  /** @internal */ private _$capacity: number;
-  /** @internal */ private _$count = 0;
-  /** @internal */ private _$prevCount = 0;
+  /**
+   * Set containers state to a linearly interpolated value between
+   * previous captured state (`0`) and the current state (`1`).
+   *
+   * This should be called before each `render()`.
+   *
+   * @param t blend value clamped to (0, 1)
+   */
+  public readonly blend: (t: number) => void;
 
-  // ----- Struct-of-arrays (SoA): -----
-  /** @internal */ private _$startPositionX: Float32Array;
-  /** @internal */ private _$startPositionY: Float32Array;
-  /** @internal */ private _$startRotation: Float32Array;
-  /** @internal */ private _$startScaleX: Float32Array;
-  /** @internal */ private _$startScaleY: Float32Array;
-  /** @internal */ private _$startAlpha: Float32Array;
-  /** @internal */ private _$endX: Float32Array;
-  /** @internal */ private _$endY: Float32Array;
-  /** @internal */ private _$endRotation: Float32Array;
-  /** @internal */ private _$endScaleX: Float32Array;
-  /** @internal */ private _$endScaleY: Float32Array;
-  /** @internal */ private _$endAlpha: Float32Array;
+  /**
+   * Restore containers to current true values.
+   *
+   * This should be called after each `render()`.
+   */
+  public readonly unblend: () => void;
 
+  // ----- Properties: -----
+  private _$exhaustedCapacity = false;
+
+  // ----- Methods: -----
   public constructor(cfg: ContainerInterpolatorOptions = {})
   {
-    const maxCapacity = cfg.maxCapacity ?? 4096;
-    const capacity = Math.min(cfg.capacity ?? 256, maxCapacity);
+    const maxTranslateDelta = cfg.maxDeltaPosition ?? DEFAULT_MAX_TRANSLATE_DELTA;
+    const maxScaleDelta = cfg.maxDeltaScale ?? DEFAULT_MAX_SCALE_DELTA;
+    const maxSkewDelta = cfg.maxDeltaSkew ?? DEFAULT_MAX_SKEW_DELTA;
+    const maxRotateDelta = cfg.maxDeltaRotation ?? DEFAULT_MAX_ROTATE_DELTA;
+    const maxCapacity = cfg.maxCapacity ?? DEFAULT_MAX_CAPACITY;
+
+    let capacity = Math.min(cfg.capacity ?? DEFAULT_INITIAL_CAPACITY, maxCapacity);
 
     // setup buffers
     const propertyBytes = capacity * BYTES_PER_ELEMENT;
-    const totalBytes = propertyBytes * BUFFERS * PROPERTIES;
-
+    const totalBytes = propertyBytes * ELEMENTS * 2;
     const buffer = new ArrayBuffer(totalBytes);
 
     let bufferIndex = 0;
@@ -147,293 +175,242 @@ export class ContainerInterpolator
       return new Float32Array(buffer, byteOffset, capacity);
     };
 
-    this._$maxCapacity      = maxCapacity;
-    this._$maxDeltaAlpha    = cfg.maxDeltaAlpha    ?? 0.5;
-    this._$maxDeltaPosition = cfg.maxDeltaPosition ?? 100;
-    this._$maxDeltaRotation = cfg.maxDeltaRotation ?? Math.PI / 2;
-    this._$maxDeltaScale    = cfg.maxDeltaScale    ?? 1.0;
+    // refs:
+    let containers = new Array(capacity),
+      count = 0,
+      prevCount = 0,
+      // position.x
+      x0 = _$alloc(),
+      x1 = _$alloc(),
+      // position.y
+      y0 = _$alloc(),
+      y1 = _$alloc(),
+      // scale.x
+      xScale0 = _$alloc(),
+      xScale1 = _$alloc(),
+      // scale.y
+      yScale0 = _$alloc(),
+      yScale1 = _$alloc(),
+      // skew.x
+      xSkew0 = _$alloc(),
+      xSkew1 = _$alloc(),
+      // skew.y
+      ySkew0 = _$alloc(),
+      ySkew1 = _$alloc(),
+      // rotation
+      r0 = _$alloc(),
+      r1 = _$alloc();
 
-    this._$containers     = new Array(capacity);
-    this._$capacity       = capacity;
-
-    this._$startPositionX = _$alloc();
-    this._$startPositionY = _$alloc();
-    this._$startRotation  = _$alloc();
-    this._$startScaleX    = _$alloc();
-    this._$startScaleY    = _$alloc();
-    this._$startAlpha     = _$alloc();
-    this._$endX           = _$alloc();
-    this._$endY           = _$alloc();
-    this._$endRotation    = _$alloc();
-    this._$endScaleX      = _$alloc();
-    this._$endScaleY      = _$alloc();
-    this._$endAlpha       = _$alloc();
-  }
-
-  // ----- Methods: -----
-
-  /**
-   * Declares the previous state of containers. Only containers
-   * captured here will be interpolated.
-   *
-   * This should be called before each `update()`.
-   */
-  public capture(target: Container): void
-  {
-    // refs
-    const containers      = this._$containers;
-    const startPositionX  = this._$startPositionX;
-    const startPositionY  = this._$startPositionY;
-    const startRotation   = this._$startRotation;
-    const startScaleX     = this._$startScaleX;
-    const startScaleY     = this._$startScaleY;
-    const startAlpha      = this._$startAlpha;
-
-    // reset counter
-    this._$count = 0;
-
-    // capture containers subtree
-    const captureContainers = (container: Container, depth: number): void =>
+    const _$resizeBuffer = (newCapacity: number): void =>
     {
-      if (container.destroyed)
+      newCapacity = Math.min(newCapacity, maxCapacity);
+
+      const propertyBytes = newCapacity * BYTES_PER_ELEMENT;
+      const totalBytes = propertyBytes * ELEMENTS * 2;
+      const buffer = new ArrayBuffer(totalBytes);
+
+      let bufferIndex = 0;
+
+      const _$allocCopy = (previousView: Float32Array): Float32Array =>
       {
-        // skip container and children
-        return;
-      }
+        const byteOffset = propertyBytes * bufferIndex++;
+        const array = new Float32Array(buffer, byteOffset, newCapacity);
 
-      const isInterpolated =
-        container.isInterpolated ?? (
-          container.visible && !(container as PixiCompatibilityContainer).culled
-        );
+        array.set(previousView);
 
-      const hasInterpolatedChildren =
-        container.hasInterpolatedChildren ?? isInterpolated;
+        return array;
+      };
 
-      if (isInterpolated)
+      // update state
+      capacity = newCapacity;
+      // position.x
+      x0 = _$allocCopy(x0);
+      x1 = _$allocCopy(x1);
+      // position.y
+      y0 = _$allocCopy(y0);
+      y1 = _$allocCopy(y1);
+      // scale.x
+      xScale0 = _$allocCopy(xScale0);
+      xScale1 = _$allocCopy(xScale1);
+      // scale.y
+      yScale0 = _$allocCopy(yScale0);
+      yScale1 = _$allocCopy(yScale1);
+      // skew.x
+      xSkew0 = _$allocCopy(xSkew0);
+      xSkew1 = _$allocCopy(xSkew1);
+      // skew.y
+      ySkew0 = _$allocCopy(ySkew0);
+      ySkew1 = _$allocCopy(ySkew1);
+      // rotation
+      r0 = _$allocCopy(r0);
+      r1 = _$allocCopy(r1);
+    };
+
+    // Methods:
+    this.capture = (target: Container): void =>
+    {
+      // reset counter
+      count = 0;
+
+      // capture containers subtree
+      const captureContainers = (container: Container, depth: number): void =>
       {
-        // on first touch, set interpolation to true
-        container.isInterpolated ??= true;
-
-        // reserve a container index
-        const i = this._$count++;
-
-        // auto-resize buffer
-        if (i >= this._$capacity)
+        if (container.destroyed)
         {
-          if (this._$capacity >= this._$maxCapacity)
+          // skip container and children
+          return;
+        }
+
+        const isInterpolated =
+          container.isInterpolated ?? (
+            container.visible && !(container as PixiCompatibilityContainer).culled
+          );
+
+        const hasInterpolatedChildren =
+          container.hasInterpolatedChildren ?? isInterpolated;
+
+        if (isInterpolated)
+        {
+          // on first touch, set interpolation to true
+          container.isInterpolated ??= true;
+
+          // reserve a container index
+          const i = count++;
+
+          // auto-resize buffer
+          if (i >= capacity)
           {
             // ran out of allocations, end abruptly
-            console.error("[ContainerInterpolator] exceeded buffer capacity:", i);
+            if (capacity >= maxCapacity)
+            {
+              if (!this._$exhaustedCapacity)
+              {
+                console.error(
+                  "[ContainerInterpolator] exhausted maximum capacity:",
+                  maxCapacity
+                );
 
-            return;
+                this._$exhaustedCapacity = true;
+              }
+
+              // early exit: skip the rest of the capture phase
+              return;
+            }
+
+            _$resizeBuffer(capacity * 2);
           }
 
-          this._$resize(this._$capacity * 2);
+          // save container ref
+          containers[i] = container;
+
+          // capture properties
+          x0[i] = container.position._x;
+          y0[i] = container.position._y;
+          xScale0[i] = container.scale._x;
+          yScale0[i] = container.scale._y;
+          xSkew0[i] = container.skew._x;
+          ySkew0[i] = container.skew._y;
+          r0[i] = container.rotation;
         }
 
-        // save container ref
-        containers[i] = container;
-
-        // capture properties
-        startPositionX[i] = container.position._x;
-        startPositionY[i] = container.position._y;
-        startScaleX[i]    = container.scale._x;
-        startScaleY[i]    = container.scale._y;
-        startRotation[i]  = container.rotation;
-        startAlpha[i]     = container.alpha;
-      }
-
-      if (hasInterpolatedChildren)
-      {
-        const children = container.children as Container[];
-
-        for (let i = 0; i < children.length; i++)
+        if (hasInterpolatedChildren)
         {
-          captureContainers(children[i]!, depth + 1);
+          const children = container.children as Container[];
+
+          for (let i = 0; i < children.length; i++)
+          {
+            captureContainers(children[i]!, depth+1);
+          }
+        }
+      };
+
+      captureContainers(target, 0);
+
+      // release tail pointers
+      for (let j = count; j < prevCount; j++)
+      {
+        containers[j] = (undefined as any);
+      }
+
+      // save for next run
+      prevCount = count;
+    };
+
+    // blend refs:
+    let container: Container;
+    let dx: number;
+    let dy: number;
+    let dr: number;
+    let dScaleX: number;
+    let dScaleY: number;
+    let dSkewX: number;
+    let dSkewY: number;
+
+    this.blend = (t: number): void =>
+    {
+      // clamp
+      t = Math.min(1, Math.max(0, t));
+
+      for (let i = 0; i < count; i++)
+      {
+        container = containers[i]!;
+
+        if (container === undefined || container.destroyed)
+        {
+          // skip: bad reference
+          continue;
+        }
+
+        // capture end values and calculate the total delta
+        dx = (x1[i] = container.position._x) - x0[i]!;
+        dy = (y1[i] = container.position._y) - y0[i]!;
+        dScaleX = (xScale1[i] = container.scale._x) - xScale0[i]!;
+        dScaleY = (yScale1[i] = container.scale._y) - yScale0[i]!;
+        dSkewX = (xSkew1[i] = container.skew._x) - xSkew0[i]!;
+        dSkewY = (ySkew1[i] = container.skew._y) - ySkew0[i]!;
+        dr = (r1[i] = container.rotation) - r0[i]!;
+
+        if (Math.abs(dx) <= maxTranslateDelta && Math.abs(dy) <= maxTranslateDelta)
+        {
+          container.position.set(x0[i]! + dx * t, y0[i]! + dy * t);
+        }
+
+        if (Math.abs(dScaleX) <= maxScaleDelta && Math.abs(dScaleY) <= maxScaleDelta)
+        {
+          container.scale.set(xScale0[i]! + dScaleX * t, yScale0[i]! + dScaleY * t);
+        }
+
+        if (Math.abs(dSkewX) <= maxSkewDelta && Math.abs(dSkewY) <= maxSkewDelta)
+        {
+          container.skew.set(xSkew0[i]! + dSkewX * t, ySkew0[i]! + dSkewY * t);
+        }
+
+        if (Math.abs(dr) <= maxRotateDelta)
+        {
+          container.rotation = r0[i]! + dr * t;
         }
       }
     };
 
-    captureContainers(target, 0);
-
-    // release tail pointers
-    for (let j = this._$count; j < this._$prevCount; j++)
+    this.unblend = (): void =>
     {
-      this._$containers[j] = undefined;
-    }
+      let container: Container;
 
-    // save for next run
-    this._$prevCount = this._$count;
-  }
-
-  /**
-   * Set containers state to a blend between previous captured
-   * state and the current state.
-   *
-   * This should be called before each `render()`.
-   *
-   * @param t blended value clamped to (0, 1)/
-   */
-  public blend(t: number): void
-  {
-    // clamp
-    t = Math.min(1, Math.max(0, t));
-
-    // refs:
-    const maxDeltaPosition  = this._$maxDeltaPosition;
-    const maxDeltaScale     = this._$maxDeltaScale;
-    const maxDeltaAlpha     = this._$maxDeltaAlpha;
-    const maxDeltaRotation  = this._$maxDeltaRotation;
-    const containers        = this._$containers;
-
-    const startPositionX  = this._$startPositionX;
-    const startPositionY  = this._$startPositionY;
-    const startRotation   = this._$startRotation;
-    const startScaleX     = this._$startScaleX;
-    const startScaleY     = this._$startScaleY;
-    const startAlpha      = this._$startAlpha;
-
-    const endX        = this._$endX;
-    const endY        = this._$endY;
-    const endRotation = this._$endRotation;
-    const endScaleX   = this._$endScaleX;
-    const endScaleY   = this._$endScaleY;
-    const endAlpha    = this._$endAlpha;
-
-    let container: Container;
-    let deltaPositionX: number;
-    let deltaPositionY: number;
-    let deltaRotation: number;
-    let deltaScaleX: number;
-    let deltaScaleY: number;
-    let deltaAlpha: number;
-
-    for (let i = 0; i < this._$count; i++)
-    {
-      container = containers[i]!;
-
-      if (container === undefined || container.destroyed)
+      for (let i = 0; i < count; i++)
       {
-        // skip: bad reference
-        continue;
+        container = containers[i]!;
+
+        if (container === undefined || container.destroyed)
+        {
+          continue; // skip: bad reference
+        }
+
+        // clear
+        container.position.set(x1[i]!, y1[i]!);
+        container.scale.set(xScale1[i]!, yScale1[i]!);
+        container.skew.set(xSkew1[i]!, ySkew1[i]!);
+        container.rotation = r1[i]!;
       }
-
-      // capture end values and calculate the total delta
-      deltaPositionX  = (endX[i] = container.position._x)     - startPositionX[i]!;
-      deltaPositionY  = (endY[i] = container.position._y)     - startPositionY[i]!;
-      deltaScaleX     = (endScaleX[i] = container.scale._x)   - startScaleX[i]!;
-      deltaScaleY     = (endScaleY[i] = container.scale._y)   - startScaleY[i]!;
-      deltaRotation   = (endRotation[i] = container.rotation) - startRotation[i]!;
-      deltaAlpha      = (endAlpha[i] = container.alpha)       - startAlpha[i]!;
-
-      if (
-        Math.abs(deltaPositionX) <= maxDeltaPosition
-        && Math.abs(deltaPositionY) <= maxDeltaPosition
-      )
-      {
-        container.position.set(startPositionX[i]! + deltaPositionX * t,
-                               startPositionY[i]! + deltaPositionY * t);
-      }
-
-      if (
-        Math.abs(deltaScaleX) <= maxDeltaScale
-        && Math.abs(deltaScaleY) <= maxDeltaScale
-      )
-      {
-        container.scale.set(startScaleX[i]! + deltaScaleX * t,
-                            startScaleY[i]! + deltaScaleY * t);
-      }
-
-      // rotation
-      if (
-        Math.abs(deltaRotation) <= maxDeltaRotation
-      )
-      {
-        container.rotation = startRotation[i]! + deltaRotation * t;
-      }
-
-      // alpha
-      if (
-        Math.abs(deltaAlpha) <= maxDeltaAlpha
-      )
-      {
-        container.alpha = startAlpha[i]! + deltaAlpha * t;
-      }
-    }
-  }
-
-  /**
-   * Restore containers to current true values.
-   *
-   * This should be called after each `render()`.
-   */
-  public unblend(): void
-  {
-    // refs:
-    const containers    = this._$containers;
-    const endPositionX  = this._$endX;
-    const endPositionY  = this._$endY;
-    const endRotation   = this._$endRotation;
-    const endScaleX     = this._$endScaleX;
-    const endScaleY     = this._$endScaleY;
-    const endAlpha      = this._$endAlpha;
-
-    let container: Container;
-
-    for (let i = 0; i < this._$count; i++)
-    {
-      container = containers[i]!;
-
-      if (container === undefined || container.destroyed)
-      {
-        continue; // skip: bad reference
-      }
-
-      // update transform for changed values
-      container.position.set(endPositionX[i]!, endPositionY[i]!);
-      container.scale.set(endScaleX[i]!, endScaleY[i]!);
-      container.rotation = endRotation[i]!;
-      container.alpha = endAlpha[i]!;
-    }
-  }
-
-  // ----- Internal methods: -----
-
-  /**
-   * @internal
-   */
-  private _$resize(capacity: number): void
-  {
-    capacity = Math.min(capacity, this._$maxCapacity);
-
-    const propertyBytes = capacity * BYTES_PER_ELEMENT;
-    const totalBytes = propertyBytes * BUFFERS * PROPERTIES;
-    const buffer = new ArrayBuffer(totalBytes);
-
-    let bufferIndex = 0;
-
-    const _$allocCopy = (previousArray: Float32Array): Float32Array =>
-    {
-      const byteOffset = propertyBytes * bufferIndex++;
-      const array = new Float32Array(buffer, byteOffset, capacity);
-
-      array.set(previousArray);
-
-      return array;
     };
-
-    this._$capacity       = capacity;
-    this._$startPositionX = _$allocCopy(this._$startPositionX);
-    this._$startPositionY = _$allocCopy(this._$startPositionY);
-    this._$startRotation  = _$allocCopy(this._$startRotation);
-    this._$startScaleX    = _$allocCopy(this._$startScaleX);
-    this._$startScaleY    = _$allocCopy(this._$startScaleY);
-    this._$startAlpha     = _$allocCopy(this._$startAlpha);
-    this._$endX           = _$allocCopy(this._$endX);
-    this._$endY           = _$allocCopy(this._$endY);
-    this._$endRotation    = _$allocCopy(this._$endRotation);
-    this._$endScaleX      = _$allocCopy(this._$endScaleX);
-    this._$endScaleY      = _$allocCopy(this._$endScaleY);
-    this._$endAlpha       = _$allocCopy(this._$endAlpha);
   }
 }

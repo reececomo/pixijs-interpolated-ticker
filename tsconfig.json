@@ -17,7 +17,7 @@
     "baseUrl": "./",
     "skipLibCheck": true,
     "stripInternal": true,
-    "types": ["./src/globals.d.ts"],
+    "types": ["./src/globals.d.ts", "jest"],
     "paths": {
       "pixi.js": ["node_modules/pixi.js"]
     }
