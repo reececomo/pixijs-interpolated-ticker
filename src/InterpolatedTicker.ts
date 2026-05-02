@@ -280,8 +280,6 @@ export class InterpolatedTicker
     const renderer = this.renderer;
     const stage = this.stage;
 
-    (window as any).ContainerInterpolator = interpolator;
-
     const fixedDeltaMS = this.fixedDeltaMS;
     const now = performance.now();
 
