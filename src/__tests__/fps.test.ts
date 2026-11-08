@@ -31,6 +31,6 @@ describe("fpsCounter", () =>
     track(30);
     track(41);
 
-    expect(onChange).toHaveBeenCalledWith(Math.round(3 * 1000 / 101 / 0.5) * 0.5);
+    expect(onChange).toHaveBeenCalledWith(29.5);
   });
 });
