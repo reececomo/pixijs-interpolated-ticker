@@ -14,21 +14,21 @@ export function fpsCounter(options: FpsCounterOptions): TrackFrameFunction
   const intervalMS = options.intervalMS;
   const precision = options.precision;
 
-  let elapsed = 0;
+  const state = { elapsed: 0 };
   let frames = 0;
   let _fps = 0;
 
   return (deltaMS: number): void =>
   {
-    elapsed += deltaMS;
+    state.elapsed += deltaMS;
     frames += 1;
 
-    if (elapsed < intervalMS) return;
+    if (state.elapsed < intervalMS) return;
 
-    const fps = Math.round(frames * 1000 / elapsed / precision) * precision;
+    const fps = Math.round(frames * 1000 / state.elapsed / precision) * precision;
 
     frames = 0;
-    elapsed = 0;
+    state.elapsed = 0;
 
     if (_fps !== fps)
     {

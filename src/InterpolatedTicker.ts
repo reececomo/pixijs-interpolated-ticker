@@ -7,6 +7,14 @@ interface IRendererLike {
   render: (stage: Container) => void;
 }
 
+interface RenderOptionsLike {
+  container: Container;
+  target: unknown;
+  clearColor: unknown;
+  clear: unknown;
+  transform: unknown;
+}
+
 export interface LifecycleEventHooks
 {
   /**
@@ -279,15 +287,15 @@ export class InterpolatedTicker
     const interpolator = new ContainerInterpolator(this._$interpolationOptions);
     const renderer = this.renderer;
     const stage = this.stage;
+    const renderOptions: RenderOptionsLike | undefined = "renderPipes" in renderer
+      ? { container: stage, target: undefined, clearColor: undefined, clear: undefined, transform: undefined }
+      : undefined;
 
     const fixedDeltaMS = this.fixedDeltaMS;
     const now = performance.now();
 
-    let then: DOMHighResTimeStamp = now;
-    let renderthen: DOMHighResTimeStamp = now;
-    let accumulatedMS = 0;
+    const clock = { then: now, renderthen: now, accumulatedMS: 0 };
     let blendFrame = false;
-    let progress = 1;
 
     const frameHandler = (now: DOMHighResTimeStamp): void =>
     {
@@ -295,23 +303,23 @@ export class InterpolatedTicker
       this._$rafRequestId = requestAnimationFrame(frameHandler);
 
       // track frame time
-      const elapsedMS = now - then;
-      then = now;
+      const elapsedMS = now - clock.then;
+      clock.then = now;
       trackDeviceFPS(elapsedMS);
 
       // accumulate scaled time
-      accumulatedMS += this.speed * Math.min(elapsedMS, this._$maxFrameTimeMS);
+      clock.accumulatedMS += this.speed * Math.min(elapsedMS, this._$maxFrameTimeMS);
 
       // -------------------------------------
       // Fixed timestep update:
       // -------------------------------------
       //
-      while (accumulatedMS >= fixedDeltaMS)
+      while (clock.accumulatedMS >= fixedDeltaMS)
       {
         blendFrame = this.interpolation;
         if (blendFrame) interpolator.capture(stage);
         updateFn(fixedDeltaMS);
-        accumulatedMS -= fixedDeltaMS;
+        clock.accumulatedMS -= fixedDeltaMS;
       }
 
       // -------------------------------------
@@ -319,12 +327,12 @@ export class InterpolatedTicker
       // -------------------------------------
       //
       const rendernow = performance.now();
-      const renderMS = rendernow - renderthen;
+      const renderMS = rendernow - clock.renderthen;
 
       if (renderMS >= this._$minRenderMS)
       {
-        renderthen = rendernow;
-        progress = blendFrame ? accumulatedMS/fixedDeltaMS : 1;
+        clock.renderthen = rendernow;
+        const progress = blendFrame ? clock.accumulatedMS/fixedDeltaMS : 1;
 
         // pre-render hooks
         prepareRenderFn(renderMS);
@@ -332,7 +340,18 @@ export class InterpolatedTicker
         renderFn(renderMS, progress);
 
         // PIXI render
-        renderer.render(stage);
+        if (renderOptions)
+        {
+          renderOptions.target = undefined;
+          renderOptions.clearColor = undefined;
+          renderOptions.clear = undefined;
+          renderOptions.transform = undefined;
+          renderer.render(renderOptions as unknown as Container);
+        }
+        else
+        {
+          renderer.render(stage);
+        }
 
         // post-render hooks
         if (blendFrame) interpolator.unlerp();
